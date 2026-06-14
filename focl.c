@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <inttypes.h>
+#include <time.h>
+#include <setjmp.h>
 
 /*
  * NOTICE:
@@ -197,13 +199,26 @@ typedef struct Focl_Context
     Focl_Registers* regs;
     Focl_StringPool* strPool;
     Focl_VectorPool* vecPool;
+    jmp_buf breakBuf;
+    jmp_buf continueBuf;
+    bool hasBreakBuf;
+    bool hasContinueBuf;
 }Focl_Context;
+
+typedef struct Focl_ExprParser
+{
+    Focl_Context* context;
+    const char* pos;
+    const char* end;
+}Focl_ExprParser;
 
 void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_StringView* src);
 Focl_Object* FindObjectInContext(Focl_Context* context, Focl_StringView* str);
 
 Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* strView);
 Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView);
+
+static Focl_Object* exprParseExpression(Focl_ExprParser* p);
 
 char* Focl_getline(FILE* fp, size_t* len);
 
@@ -856,8 +871,8 @@ bool Focl_isCmdSubstition(const char* str)
         return false;
     }
 
-    char* start = str;
-    char* pace = start + 1;
+    const char* start = str;
+    const char* pace = start + 1;
     
     while (*pace)
     {
@@ -1818,7 +1833,7 @@ Focl_Object* FindObjectInContext(Focl_Context* context, Focl_StringView* strView
     return FOCL_OBJECT_ERROR;
 }
 
-Focl_Command* FindCommandInContext(Focl_Context* context, const Focl_StringView* strView)
+Focl_Command* FindCommandInContext(Focl_Context* context, Focl_StringView* strView)
 {
     /* It will search in basic command(global command) first. */
     Focl_Environment* gEnv = context->globalEnv;
@@ -1846,13 +1861,387 @@ Focl_Command* FindCommandInContext(Focl_Context* context, const Focl_StringView*
     return FOCL_COMMAND_ERROR;
 }
 
+static void exprSkipSpace(Focl_ExprParser* p)
+{
+    while (p->pos < p->end && isspace(*p->pos))
+        p->pos++;
+}
+static bool exprIsDigit(char c)
+{
+    return (c >= '0' && c <= '9');
+}
+static Focl_Object* exprParseNumber(Focl_ExprParser* p)
+{
+    const char* start = p->pos;
+    bool hasDot = false;
+    while (p->pos < p->end && (exprIsDigit(*p->pos) || *p->pos == '.'))
+    {
+        if (*p->pos == '.')
+        {
+            if (hasDot) break;
+            hasDot = true;
+        }
+        p->pos++;
+    }
+
+    size_t len = p->pos - start;
+    if (len == 0)
+    {
+        return NULL;
+    }
+    char saved = *p->pos;
+    *((char*)p->pos) = '\0';
+
+    Focl_Object* obj;
+    if (hasDot)
+    {
+        obj = createFoclObject(FOCL_OBJ_TYPE_FLOAT);
+        obj->as.f = Focl_StrToFloat(start);
+    }
+    else
+    {
+        obj = createFoclObject(FOCL_OBJ_TYPE_INT);
+        obj->as.i = Focl_StrToInt(start);
+    }
+
+    *((char*)p->pos) = saved;
+    return obj;
+}
+
+static Focl_Object* exprParseString(Focl_ExprParser* p)
+{
+    if (p->pos >= p->end || *p->pos != '"')
+        return NULL;
+
+    p->pos++;  // 跳过开始引号
+    const char* start = p->pos;
+
+    while (p->pos < p->end && *p->pos != '"')
+    {
+        if (*p->pos == '\\' && p->pos + 1 < p->end)
+            p->pos++;  // 跳过转义字符
+        p->pos++;
+    }
+
+    size_t len = p->pos - start;
+    if (p->pos >= p->end) return NULL;  // 未闭合引号
+
+    p->pos++;  // 跳过结束引号
+
+    Focl_StringView sv = {len, (char*)start};
+    Focl_Object* obj = createStringFoclObject(FOCL_OBJ_TYPE_STR, p->context->strPool);
+    FoclStrAssignView(obj->as.data, &sv);
+    return obj;
+}
+
+static Focl_Object* exprParseVariable(Focl_ExprParser* p)
+{
+    const char* start = p->pos;
+    if (!((*p->pos >= 'a' && *p->pos <= 'z') ||
+          (*p->pos >= 'A' && *p->pos <= 'Z') ||
+          *p->pos == '_'))
+    {
+        return NULL;
+    }
+    p->pos++;
+    while (p->pos < p->end &&
+           ((*p->pos >= 'a' && *p->pos <= 'z') ||
+            (*p->pos >= 'A' && *p->pos <= 'Z') ||
+            (*p->pos >= '0' && *p->pos <= '9') ||
+            *p->pos == '_'))
+    {
+        p->pos++;
+    }
+    size_t len = p->pos - start;
+    Focl_StringView varName = {len, (char*)start};
+    Focl_Object* var = FindObjectInContext(p->context, &varName);
+    if (var == FOCL_OBJECT_ERROR)
+    {
+        return FoclObjectError(p->context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+    }
+    FoclObjectRetain(var);
+    return var;
+}
+
+static Focl_Object* exprParsePrimary(Focl_ExprParser* p)
+{
+    exprSkipSpace(p);
+    if (p->pos >= p->end) return NULL;
+    if (*p->pos == '(')
+    {
+        p->pos++;
+        Focl_Object* obj = exprParseExpression(p);
+        exprSkipSpace(p);
+        if (p->pos < p->end && *p->pos == ')')
+        {
+            p->pos++;
+            return obj;
+        }
+        if (obj)
+        {
+            FoclObjectRelease(obj, p->context->strPool);
+        }
+        return FoclObjectError(p->context->strPool, "Missing closing parenthesis");
+    }
+    if (*p->pos == '-')
+    {
+        p->pos++;
+        Focl_Object* operand = exprParsePrimary(p);
+        if (operand == NULL || operand->type == FOCL_OBJ_TYPE_ERROR)
+            return operand;
+
+        if (operand->type == FOCL_OBJ_TYPE_INT)
+        {
+            operand->as.i = -operand->as.i;
+            return operand;
+        }
+        else if (operand->type == FOCL_OBJ_TYPE_FLOAT)
+        {
+            operand->as.f = -operand->as.f;
+            return operand;
+        }
+        else
+        {
+            FoclObjectRelease(operand, p->context->strPool);
+            return FoclObjectError(p->context->strPool, "Cannot negate non-numeric value");
+        }
+    }
+    if (*p->pos == '"')
+    {
+        return exprParseString(p);
+    }
+    if (exprIsDigit(*p->pos))
+    {
+        return exprParseNumber(p);
+    }
+    if ((*p->pos >= 'a' && *p->pos <= 'z') ||
+        (*p->pos >= 'A' && *p->pos <= 'Z') ||
+        *p->pos == '_')
+        return exprParseVariable(p);
+
+    return FoclObjectError(p->context->strPool, "Unexpected character in expression");
+}
+static Focl_Object* exprParseMulDiv(Focl_ExprParser* p)
+{
+    Focl_Object* left = exprParsePrimary(p);
+    if (left == NULL || left->type == FOCL_OBJ_TYPE_ERROR)
+        return left;
+
+    while (1)
+    {
+        exprSkipSpace(p);
+        if (p->pos >= p->end) break;
+
+        char op = *p->pos;
+        if (op != '*' && op != '/' && op != '%')
+            break;
+
+        p->pos++;
+
+        Focl_Object* right = exprParsePrimary(p);
+        if (right == NULL || right->type == FOCL_OBJ_TYPE_ERROR)
+        {
+            FoclObjectRelease(left, p->context->strPool);
+            return right;
+        }
+
+        // 执行运算
+        if (left->type == FOCL_OBJ_TYPE_FLOAT || right->type == FOCL_OBJ_TYPE_FLOAT)
+        {
+            // 浮点运算
+            double l = (left->type == FOCL_OBJ_TYPE_INT) ? (double)left->as.i : left->as.f;
+            double r = (right->type == FOCL_OBJ_TYPE_INT) ? (double)right->as.i : right->as.f;
+
+            FoclObjectRelease(left, p->context->strPool);
+            FoclObjectRelease(right, p->context->strPool);
+
+            left = createFoclObject(FOCL_OBJ_TYPE_FLOAT);
+            switch (op)
+            {
+                case '*': left->as.f = l * r; break;
+                case '/':
+                    if (r == 0.0)
+                    {
+                        FoclObjectRelease(left, p->context->strPool);
+                        return FoclObjectError(p->context->strPool, "Division by zero");
+                    }
+                    left->as.f = l / r;
+                    break;
+                case '%':
+                    FoclObjectRelease(left, p->context->strPool);
+                    return FoclObjectError(p->context->strPool, "Modulo requires integer operands");
+            }
+        }
+        else if (left->type == FOCL_OBJ_TYPE_INT && right->type == FOCL_OBJ_TYPE_INT)
+        {
+            // 整数运算
+            Focl_Obj_Int l = left->as.i;
+            Focl_Obj_Int r = right->as.i;
+
+            FoclObjectRelease(left, p->context->strPool);
+            FoclObjectRelease(right, p->context->strPool);
+
+            left = createFoclObject(FOCL_OBJ_TYPE_INT);
+            switch (op)
+            {
+                case '*': left->as.i = l * r; break;
+                case '/':
+                    if (r == 0)
+                    {
+                        FoclObjectRelease(left, p->context->strPool);
+                        return FoclObjectError(p->context->strPool, "Division by zero");
+                    }
+                    left->as.i = l / r;
+                    break;
+                case '%':
+                    if (r == 0)
+                    {
+                        FoclObjectRelease(left, p->context->strPool);
+                        return FoclObjectError(p->context->strPool, "Modulo by zero");
+                    }
+                    left->as.i = l % r;
+                    break;
+            }
+        }
+        else
+        {
+            FoclObjectRelease(left, p->context->strPool);
+            FoclObjectRelease(right, p->context->strPool);
+            return FoclObjectError(p->context->strPool, "Invalid operand types for arithmetic");
+        }
+    }
+
+    return left;
+}
+
+static Focl_Object* exprParseAddSub(Focl_ExprParser* p)
+{
+    Focl_Object* left = exprParseMulDiv(p);
+    if (left == NULL || left->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return left;
+    }
+    while (1)
+    {
+        exprSkipSpace(p);
+        if (p->pos >= p->end)
+        {
+            break;
+        }
+        char op = *p->pos;
+        if (op != '+' && op != '-')
+        {
+            break;
+        }
+
+        p->pos++;
+        Focl_Object* right = exprParseMulDiv(p);
+        if (right == NULL || right->type == FOCL_OBJ_TYPE_ERROR)
+        {
+            FoclObjectRelease(left, p->context->strPool);
+            return right;
+        }
+        if (left->type == FOCL_OBJ_TYPE_FLOAT || right->type == FOCL_OBJ_TYPE_FLOAT)
+        {
+            double l = (left->type == FOCL_OBJ_TYPE_INT) ? (double)left->as.i : left->as.f;
+            double r = (right->type == FOCL_OBJ_TYPE_INT) ? (double)right->as.i : right->as.f;
+
+            FoclObjectRelease(left, p->context->strPool);
+            FoclObjectRelease(right, p->context->strPool);
+
+            left = createFoclObject(FOCL_OBJ_TYPE_FLOAT);
+            left->as.f = (op == '+') ? (l + r) : (l - r);
+        }
+        else if (left->type == FOCL_OBJ_TYPE_INT && right->type == FOCL_OBJ_TYPE_INT)
+        {
+            Focl_Obj_Int l = left->as.i;
+            Focl_Obj_Int r = right->as.i;
+
+            FoclObjectRelease(left, p->context->strPool);
+            FoclObjectRelease(right, p->context->strPool);
+
+            left = createFoclObject(FOCL_OBJ_TYPE_INT);
+            left->as.i = (op == '+') ? (l + r) : (l - r);
+        }
+        else
+        {
+            FoclObjectRelease(left, p->context->strPool);
+            FoclObjectRelease(right, p->context->strPool);
+            return FoclObjectError(p->context->strPool, "Invalid operand types for arithmetic");
+        }
+    }
+
+    return left;
+}
+
+static Focl_Object* exprParseComparison(Focl_ExprParser* p)
+{
+    Focl_Object* left = exprParseAddSub(p);
+    if (left == NULL || left->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return left;
+    }
+    exprSkipSpace(p);
+    if (p->pos >= p->end)
+    {
+        return left;
+    }
+
+    const char* ops[] = {"==", "!=", "<=", ">=", "<", ">"};
+    for (int k = 0; k < 6; k++)
+    {
+        size_t opLen = strlen(ops[k]);
+        if (p->pos + opLen <= p->end && memcmp(p->pos, ops[k], opLen) == 0)
+        {
+            p->pos += opLen;
+
+            Focl_Object* right = exprParseAddSub(p);
+            if (right == NULL || right->type == FOCL_OBJ_TYPE_ERROR)
+            {
+                FoclObjectRelease(left, p->context->strPool);
+                return right;
+            }
+
+            if (left->type != FOCL_OBJ_TYPE_INT || right->type != FOCL_OBJ_TYPE_INT)
+            {
+                FoclObjectRelease(left, p->context->strPool);
+                FoclObjectRelease(right, p->context->strPool);
+                return FoclObjectError(p->context->strPool, "Comparison requires integer operands");
+            }
+
+            Focl_Obj_Int l = left->as.i;
+            Focl_Obj_Int r = right->as.i;
+            bool result = false;
+            switch (k)
+            {
+                case 0: result = (l == r); break;
+                case 1: result = (l != r); break;
+                case 2: result = (l <= r); break;
+                case 3: result = (l >= r); break;
+                case 4: result = (l < r); break;
+                case 5: result = (l > r); break;
+            }
+
+            FoclObjectRelease(left, p->context->strPool);
+            FoclObjectRelease(right, p->context->strPool);
+            return FoclObjectBool(result ? FOCL_OBJ_TRUE : FOCL_OBJ_FALSE);
+        }
+    }
+
+    return left;
+}
+
+static Focl_Object* exprParseExpression(Focl_ExprParser* p)
+{
+    return exprParseComparison(p);
+}
+
 /* CONTEXT */
 
 Focl_StringView getNextWord(const Focl_StringView* src, Focl_StringView* start)
 {
-    const char* ptr = start->strPtr;
-    const char* srcEnd = src->strPtr + src->len;
-    const char* startEnd = start->strPtr + start->len;
+    char* ptr = start->strPtr;
+    char* startEnd = start->strPtr + start->len;
     
     while (ptr < startEnd && isspace(*ptr))
     {
@@ -1865,7 +2254,7 @@ Focl_StringView getNextWord(const Focl_StringView* src, Focl_StringView* start)
         return (Focl_StringView){0, NULL};
     }
     
-    const char* wordStart = ptr;
+    char* wordStart = ptr;
     
     if (*ptr == '"')
     {
@@ -1873,11 +2262,15 @@ Focl_StringView getNextWord(const Focl_StringView* src, Focl_StringView* start)
         while (ptr < startEnd && *ptr != '"')
         {
             if (*ptr == '\\' && (ptr + 1) < startEnd)
+            {
                 ptr++;
+            }
             ptr++;
         }
         if (ptr < startEnd)
+        {
             ptr++;
+        }
     }
     else if (*ptr == '[')
     {
@@ -1942,13 +2335,11 @@ Focl_StringView getNextWord(const Focl_StringView* src, Focl_StringView* start)
 }
 Focl_StringView getNextLine(Focl_StringView* start)
 {
-    const char* ptr = start->strPtr;
-    const char* startEnd = start->strPtr + start->len;
+    char* ptr = start->strPtr;
+    char* startEnd = start->strPtr + start->len;
     
     while (ptr < startEnd && isspace(*ptr))
-    {
         ptr++;
-    }
     if (ptr >= startEnd || *ptr == '\0')
     {
         start->strPtr = startEnd;
@@ -1956,7 +2347,7 @@ Focl_StringView getNextLine(Focl_StringView* start)
         return (Focl_StringView){0, NULL};
     }
     
-    const char* wordStart = ptr;
+    char* wordStart = ptr;
     bool inString = false;
     int braceDepth = 0;
     int bracketDepth = 0;
@@ -1966,8 +2357,7 @@ Focl_StringView getNextLine(Focl_StringView* start)
         if (*ptr == '\\' && (inString || braceDepth > 0 || bracketDepth > 0))
         {
             ptr++;
-            if (ptr < startEnd)
-                ptr++;
+            if (ptr < startEnd) ptr++;
             continue;
         }
         if (*ptr == '"' && braceDepth == 0 && bracketDepth == 0)
@@ -1986,8 +2376,7 @@ Focl_StringView getNextLine(Focl_StringView* start)
             }
             if (*ptr == '}')
             {
-                if (braceDepth > 0)
-                    braceDepth--;
+                if (braceDepth > 0) braceDepth--;
                 ptr++;
                 continue;
             }
@@ -1999,8 +2388,7 @@ Focl_StringView getNextLine(Focl_StringView* start)
             }
             if (*ptr == ']')
             {
-                if (bracketDepth > 0)
-                    bracketDepth--;
+                if (bracketDepth > 0) bracketDepth--;
                 ptr++;
                 continue;
             }
@@ -2012,17 +2400,12 @@ Focl_StringView getNextLine(Focl_StringView* start)
                 break;
             }
         }
-        
         ptr++;
     }
     size_t wordLen = ptr - wordStart;
-    if (ptr < startEnd)
-    {
-        ptr++;
-    }
+    if (ptr < startEnd) ptr++;
     start->strPtr = ptr;
     start->len = startEnd - ptr;
-    
     return (Focl_StringView){wordLen, (char*)wordStart};
 }
 static bool isWordParseEnd(const Focl_StringView* strView, const char* pos)
@@ -2413,6 +2796,15 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
         }
     }
 
+    if (trimmed.len == 4 && memcmp(trimmed.strPtr, "true", 4) == 0)
+    {
+        return FoclObjectBool(FOCL_OBJ_TRUE);
+    }
+    if (trimmed.len == 5 && memcmp(trimmed.strPtr, "false", 5) == 0)
+    {
+        return FoclObjectBool(FOCL_OBJ_FALSE);
+    }
+
     Focl_Object* obj = getFoclObjectWithStringView(context, &trimmed);
 
     if (obj->type == FOCL_OBJ_TYPE_ERROR)
@@ -2629,6 +3021,11 @@ Focl_Object* buildIn_gets(Focl_Context* context, Focl_Vector* objVec)
     {
         return FoclObjectError(context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
     }
+    Focl_Object* scanRet = FoclObjectScan(context->strPool, obj);
+    if (scanRet->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return scanRet;
+    }
     return createFoclObjectAssign(context->strPool, obj);
 }
 Focl_Object* buildIn_set(Focl_Context* context, Focl_Vector* objVec)
@@ -2780,7 +3177,6 @@ Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec)
     {
         return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-
     Focl_StringView condBlock = FoclObjVecAtAsStringToView(objVec, 0);
     Focl_StringView condExpr = FoclStringViewPeelBoth(&condBlock);
     Focl_Object* condResult = Focl_exprBool(context, &condExpr);
@@ -2788,30 +3184,49 @@ Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec)
     {
         return condResult;
     }
-
     Focl_Object* result = FoclObjectVoid(context->strPool);
+    context->hasBreakBuf = true;
+    context->hasContinueBuf = true;
 
     while (condResult->as.i == FOCL_OBJ_TRUE)
     {
+        volatile int breakJmp = setjmp(context->breakBuf);
+        if (breakJmp != 0)
+        {
+            FoclObjectRelease(condResult, context->strPool);
+            break;
+        }
+
         FoclObjectRelease(condResult, context->strPool);
+        condResult = NULL;
         Focl_StringView execBlock = FoclObjVecAtAsStringToView(objVec, 1);
         Focl_Object* bodyResult = Focl_parseBlock(context, &execBlock);
         if (bodyResult->type == FOCL_OBJ_TYPE_ERROR)
         {
             FoclObjectRelease(result, context->strPool);
+            context->hasBreakBuf = false;
+            context->hasContinueBuf = false;
             return bodyResult;
         }
         FoclObjectRelease(result, context->strPool);
         result = bodyResult;
+        setjmp(context->continueBuf);
         condResult = Focl_exprBool(context, &condExpr);
         if (condResult->type == FOCL_OBJ_TYPE_ERROR)
         {
             FoclObjectRelease(result, context->strPool);
+            context->hasBreakBuf = false;
+            context->hasContinueBuf = false;
             return condResult;
         }
     }
 
-    FoclObjectRelease(condResult, context->strPool);
+    context->hasBreakBuf = false;
+    context->hasContinueBuf = false;
+    if (condResult != NULL)
+    {
+        FoclObjectRelease(condResult, context->strPool);
+    }
     return result;
 }
 Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec)
@@ -2821,7 +3236,6 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec)
     {
         return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-
     for (size_t i = 0; i < 4; i++)
     {
         if (!isFoclObjectUseString(FoclObjVecAt(objVec, i)))
@@ -2836,47 +3250,61 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec)
         return initResult;
     }
     FoclObjectRelease(initResult, context->strPool);
-
     Focl_StringView condBlock = FoclObjVecAtAsStringToView(objVec, 1);
     Focl_StringView condExpr = FoclStringViewPeelBoth(&condBlock);
     Focl_StringView updateBlock = FoclObjVecAtAsStringToView(objVec, 2);
     Focl_StringView bodyBlock = FoclObjVecAtAsStringToView(objVec, 3);
     Focl_Object* result = FoclObjectVoid(context->strPool);
-
+    context->hasBreakBuf = true;
+    context->hasContinueBuf = true;
     while (1)
     {
         Focl_Object* condResult = Focl_exprBool(context, &condExpr);
         if (condResult->type == FOCL_OBJ_TYPE_ERROR)
         {
             FoclObjectRelease(result, context->strPool);
+            context->hasBreakBuf = false;
+            context->hasContinueBuf = false;
             return condResult;
         }
-
         if (condResult->as.i != FOCL_OBJ_TRUE)
         {
             FoclObjectRelease(condResult, context->strPool);
             break;
         }
         FoclObjectRelease(condResult, context->strPool);
+        volatile int breakJmp = setjmp(context->breakBuf);
+        if (breakJmp != 0)
+        {
+            context->hasBreakBuf = false;
+            context->hasContinueBuf = false;
+            return result;
+        }
         Focl_Object* bodyResult = Focl_parseBlock(context, &bodyBlock);
         if (bodyResult->type == FOCL_OBJ_TYPE_ERROR)
         {
             FoclObjectRelease(result, context->strPool);
+            context->hasBreakBuf = false;
+            context->hasContinueBuf = false;
             return bodyResult;
         }
-
         FoclObjectRelease(result, context->strPool);
         result = bodyResult;
-
-        Focl_Object* updateResult = Focl_parseBlock(context, &updateBlock);
-        if (updateResult->type == FOCL_OBJ_TYPE_ERROR)
         {
-            FoclObjectRelease(result, context->strPool);
-            return updateResult;
+            setjmp(context->continueBuf);
+            Focl_Object* updateResult = Focl_parseBlock(context, &updateBlock);
+            if (updateResult->type == FOCL_OBJ_TYPE_ERROR)
+            {
+                FoclObjectRelease(result, context->strPool);
+                context->hasBreakBuf = false;
+                context->hasContinueBuf = false;
+                return updateResult;
+            }
+            FoclObjectRelease(updateResult, context->strPool);
         }
-        FoclObjectRelease(updateResult, context->strPool);
     }
-
+    context->hasBreakBuf = false;
+    context->hasContinueBuf = false;
     return result;
 }
 Focl_Object* buildIn_typename(Focl_Context* context, Focl_Vector* objVec)
@@ -2941,27 +3369,102 @@ Focl_Object* buildIn_typeid(Focl_Context* context, Focl_Vector* objVec)
     idObj->as.i = obj->type;
     return idObj;
 }
-#define REGISTER_CMD(ctx, cmdName, func) \
-    do \
-    { \
-        Focl_String* _name = FoclStringPoolAlloc((ctx)->strPool); \
-        FoclStrAssign(_name, (cmdName)); \
-        Focl_Command* _cmd = createFoclCommand((func)); \
-        FoclHashTableInsert((ctx)->globalEnv->cmdTable, _name, _cmd, StrKeyCompare, NULL); \
-    }while (0)
+Focl_Object* buildIn_eval(Focl_Context* context, Focl_Vector* objVec)
+{
+    size_t argCount = FoclVectorGetSize(objVec);
+    if (argCount != 1)
+    {
+        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_String* viewToEval = FoclObjVecAtAsString(objVec, 0);
+    Focl_Object* obj = Focl_parseLine(context, viewToEval);
+    return obj;
+}
+Focl_Object* buildIn_expr(Focl_Context* context, Focl_Vector* objVec)
+{
+    if (FoclVectorGetSize(objVec) != 1)
+    {
+        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* arg = FoclObjVecAt(objVec, 0);
+    if (!isFoclObjectUseString(arg))
+    {
+        return FoclObjectError(context->strPool, "expr requires a string argument");
+    }
+    Focl_StringView sv = {arg->as.data->length, arg->as.data->data};
+    Focl_ExprParser parser;
+    parser.context = context;
+    parser.pos = sv.strPtr;
+    parser.end = sv.strPtr + sv.len;
+    Focl_Object* result = exprParseExpression(&parser);
+    if (result != NULL && result->type != FOCL_OBJ_TYPE_ERROR)
+    {
+        exprSkipSpace(&parser);
+        if (parser.pos < parser.end)
+        {
+            FoclObjectRelease(result, context->strPool);
+            return FoclObjectError(context->strPool, "Unexpected characters after expression");
+        }
+    }
+    return result;
+}
+Focl_Object* buildIn_curtime(Focl_Context* context, Focl_Vector* objVec)
+{
+    if (FoclVectorGetSize(objVec) != 0)
+    {
+        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    time_t rawtime;
+    struct tm *timeinfo;
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    Focl_Object* timeObj = createStringFoclObject(FOCL_OBJ_TYPE_STR, context->strPool);
+    FoclStrAssign(timeObj->as.data, asctime(timeinfo));
+    return timeObj;
+}
+Focl_Object* buildIn_break(Focl_Context* context, Focl_Vector* objVec)
+{
+    if (context->hasBreakBuf)
+    {
+        longjmp(context->breakBuf, 1);
+    }
+    return FoclObjectError(context->strPool, "break outside loop");
+}
+
+Focl_Object* buildIn_continue(Focl_Context* context, Focl_Vector* objVec)
+{
+    if (context->hasContinueBuf)
+    {
+        longjmp(context->continueBuf, 1);
+    }
+    return FoclObjectError(context->strPool, "continue outside loop");
+}
+
+void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_CommandFunc func)
+{
+    Focl_String* _name = FoclStringPoolAlloc(context->strPool);
+    FoclStrAssign(_name, (cmdName));
+    Focl_Command* _cmd = createFoclCommand((func));
+    FoclHashTableInsert(context->globalEnv->cmdTable, _name, _cmd, StrKeyCompare, NULL);
+}
 
 void registerBuiltinCommands(Focl_Context* context)
 {
-    REGISTER_CMD(context, "puts", buildIn_puts);
-    REGISTER_CMD(context, "gets", buildIn_gets);
-    REGISTER_CMD(context, "set", buildIn_set);
-    REGISTER_CMD(context, "unset", buildIn_unset);
-    REGISTER_CMD(context, "incr", buildIn_incr);
-    REGISTER_CMD(context, "if", buildIn_if);
-    REGISTER_CMD(context, "while", buildIn_while);
-    REGISTER_CMD(context, "for", buildIn_for);
-    REGISTER_CMD(context, "typename", buildIn_typename);
-    REGISTER_CMD(context, "typeid", buildIn_typeid);
+    FoclRegisterCommand(context, "puts", buildIn_puts);
+    FoclRegisterCommand(context, "gets", buildIn_gets);
+    FoclRegisterCommand(context, "set", buildIn_set);
+    FoclRegisterCommand(context, "unset", buildIn_unset);
+    FoclRegisterCommand(context, "incr", buildIn_incr);
+    FoclRegisterCommand(context, "if", buildIn_if);
+    FoclRegisterCommand(context, "while", buildIn_while);
+    FoclRegisterCommand(context, "for", buildIn_for);
+    FoclRegisterCommand(context, "typename", buildIn_typename);
+    FoclRegisterCommand(context, "typeid", buildIn_typeid);
+    FoclRegisterCommand(context, "eval", buildIn_eval);
+    FoclRegisterCommand(context, "expr", buildIn_expr);
+    FoclRegisterCommand(context, "curtime", buildIn_curtime);
+    FoclRegisterCommand(context, "break", buildIn_break);
+    FoclRegisterCommand(context, "continue", buildIn_continue);
 }
 
 /* BUILTIN COMMAND */
@@ -3011,10 +3514,7 @@ int focl_countBraceDepth(const char* str)
         if (*p == '\\' && inString)
         {
             p++;
-            if (*p == '\0')
-            {
-                break;
-            }
+            if (*p == '\0') break;
             continue;
         }
         if (*p == '"')
@@ -3033,7 +3533,7 @@ int focl_countBraceDepth(const char* str)
         }
         else if (*p == ']' || *p == '}')
         {
-            if (depth > 0) depth--;
+            depth--;
         }
     }
     return depth;
@@ -3085,6 +3585,10 @@ void Focl_REPL(Focl_Context* ctx)
         }
         FoclStrAppend(&buffer, input);
         depth += focl_countBraceDepth(input);
+        if (depth < 0)
+        {
+            depth = 0;
+        }
         free(input);
 
         if (depth > 0)
@@ -3159,6 +3663,15 @@ void Focl_ExecFile(Focl_Context* ctx, const char* filename)
     }
     freeFoclStringData(&buffer);
     fclose(fp);
+}
+Focl_Object* Focl_eval(Focl_Context* context, const char* Cstr)
+{
+    Focl_String* str = FoclStringPoolAlloc(context->strPool);
+    FoclStrAssign(str, Cstr);
+    Focl_StringView strView = {str->length, str->data};
+    Focl_Object* result = Focl_parseCommandSequence(context, &strView);
+    FoclStringPoolFree(context->strPool, str);
+    return result;
 }
 int main(int argc, char* argv[])
 {
