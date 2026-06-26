@@ -9,12 +9,13 @@
 typedef struct Focl_Vector Focl_Vector;
 typedef struct Focl_Object Focl_Object;
 typedef struct Focl_Context Focl_Context;
-typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* objVec);
+typedef struct Focl_Command Focl_Command;
+typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
 
 Focl_Context* createFoclContext();
 void freeFoclContext(Focl_Context* context);
-void Focl_REPL(Focl_Context* ctx);
-void Focl_ExecFile(Focl_Context* ctx, const char* filename);
+int Focl_REPL(Focl_Context* ctx);
+int Focl_ExecFile(Focl_Context* ctx, const char* filename);
 void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_CommandFunc func);
 Focl_Object* Focl_eval(Focl_Context* context, const char* Cstr);
 
