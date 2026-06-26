@@ -17,6 +17,7 @@ void freeFoclContext(Focl_Context* context);
 int Focl_REPL(Focl_Context* ctx);
 int Focl_ExecFile(Focl_Context* ctx, const char* filename);
 void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_CommandFunc func);
+void Focl_RegisterBuiltinCommands(Focl_Context* context);
 Focl_Object* Focl_eval(Focl_Context* context, const char* Cstr);
 
 #endif
