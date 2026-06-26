@@ -9,5 +9,5 @@ MIT License
 ## Compile
 
 ```bash
-cc -o focl focl.c
+cc -o focl focl.c focl_main.c
 ```
