@@ -140,6 +140,15 @@ typedef Focl_Pool Focl_StringPool;
 
 typedef Focl_Pool Focl_VectorPool;
 
+#define FOCL_OBJ_POOL_ITEM_PER_BLOCK 16
+#define FOCL_OBJ_POOL_BLOCK_COUNT_INIT 2
+
+#define FOCL_OBJ_POOL_WITH_NO_STR_DEFAULT_TYPE FOCL_OBJ_TYPE_INT
+#define FOCL_OBJ_POOL_WITH_STR_DEFAULT_TYPE FOCL_OBJ_TYPE_STR
+
+typedef Focl_Pool Focl_ObjWithNoStrPool;
+typedef Focl_Pool Focl_StrObjPool;
+
 typedef struct Focl_Object
 {
     Focl_Obj_RefCount refCount;
@@ -151,9 +160,6 @@ typedef struct Focl_Object
         Focl_Obj_Int i;
     }as;
 }Focl_Object;
-
-void FoclObjectRetain(Focl_Object* obj);
-void FoclObjectRelease(Focl_Object* obj, Focl_StringPool* strPool);
 
 typedef size_t (*Focl_HashFunc)(void*);
 typedef bool (*KeyCompareFunc)(void*, void*);
@@ -207,6 +213,8 @@ typedef struct Focl_Context
     Focl_StringPool* strPool;
     Focl_VectorPool* vecPool;
     Focl_Object* returnValue;
+    Focl_ObjWithNoStrPool* objWithNoStrPool;
+    Focl_StrObjPool* strObjPool;
     jmp_buf breakBuf;
     jmp_buf continueBuf;
     jmp_buf exitBuf;
@@ -224,6 +232,14 @@ typedef struct Focl_ExprParser
     const char* pos;
     const char* end;
 }Focl_ExprParser;
+
+void FoclObjectRetain(Focl_Object* obj);
+void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);
+
+Focl_Object* FoclObjWithNoStringPoolAlloc(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Type type_);
+Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* objPool, Focl_StringPool* strPool, Focl_Obj_Type type_);
+void FoclObjWithNoStringPoolFree(Focl_Object* obj, Focl_ObjWithNoStrPool* objPool);
+void FoclStringObjPoolFree(Focl_Object* obj, Focl_StrObjPool* objPool);
 
 void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_StringView* src);
 Focl_Object* FindObjectInContext(Focl_Context* context, Focl_StringView* str);
@@ -282,6 +298,7 @@ char* Focl_strdup(const char* src)
 {
     size_t len = strlen(src);
     char* s = malloc(len + 1);
+    memcpy(s, src, len);
     s[len] = '\0';
     return s;
 }
@@ -450,6 +467,18 @@ int FoclStrCompStrView(const Focl_String* str, const Focl_StringView* strView)
     }
     return memcmp(str->data, strView->strPtr, strView->len);
 }
+size_t FoclStrCharCount(const Focl_String* str)
+{   
+    size_t count = 0;
+    const char* ptr = str->data;
+    while (*ptr)
+    {
+        int32_t cpLen = getUtf8CodePointLength((uint8_t)*ptr);
+        ptr += cpLen;
+        count++;
+    }
+    return count;
+}
 void FoclStrClear(Focl_String* str)
 {
     str->length = 0;
@@ -502,6 +531,19 @@ Focl_StringView FoclStringViewPeelBoth(Focl_StringView* strView)
     }
     Focl_StringView peelView = {strView->len - 2, strView->strPtr + 1};
     return peelView;
+}
+size_t FoclStringViewCharCount(const Focl_StringView* strView)
+{   
+    size_t count = 0;
+    const char* ptr = strView->strPtr;
+    const char* end = ptr + strView->len;
+    while (ptr < end)
+    {
+        int32_t cpLen = getUtf8CodePointLength((uint8_t)*ptr);
+        ptr += cpLen;
+        count++;
+    }
+    return count;
 }
 
 int FoclStringViewComp(Focl_StringView* strView, const char* Cstr)
@@ -1521,8 +1563,6 @@ void FoclVectorPoolFree(Focl_Vector* vec, Focl_VectorPool* vecPool)
 
 /* VECTOR POOL */
 
-/* VAR */
-
 #define FOCL_OBJECT_ERROR NULL
 
 #define FOCL_OBJ_TYPE_INT 0
@@ -1532,8 +1572,7 @@ void FoclVectorPoolFree(Focl_Vector* vec, Focl_VectorPool* vecPool)
 #define FOCL_OBJ_TYPE_ERROR 4
 #define FOCL_OBJ_TYPE_BYTECODE 5
 #define FOCL_OBJ_TYPE_STR 6
-#define FOCL_OBJ_TYPE_BLOCK 7
-#define FOCL_OBJ_TYPE_COMPLEX 8
+#define FOCL_OBJ_TYPE_COMPLEX 7
 
 /* ERROR MESSAGE */
 
@@ -1545,9 +1584,12 @@ void FoclVectorPoolFree(Focl_Vector* vec, Focl_VectorPool* vecPool)
 #define FOCL_ERR_UNKNOWN_COMMAND "Unknown command"
 #define FOCL_ERR_WRONG_TYPE_ASSIGNMENT "Wrong type in assignment"
 #define _FOCL_STR_HELPER(x) #x
-#define FOCL_ERR_YSNBH "You should not be here! Line: " _FOCL_STR_HELPER(__LINE__)
+#define _FOCL_MACRO_AS_STR(x) _FOCL_STR_HELPER(x)
+#define FOCL_ERR_YSNBH "You should not be here! Line: " _FOCL_MACRO_AS_STR(__LINE__)
 
 /* ERROR MESSAGE */
+
+/* VAR */
 
 Focl_Obj_Int FoclObjectUnboxInt(Focl_Object* obj)
 {
@@ -1593,14 +1635,14 @@ Focl_Obj_Float Focl_StrToFloat_View(const Focl_StringView* strView)
     return f;
 }
 
-Focl_Object* createFoclObject(Focl_Obj_Type type_)
+Focl_Object* createFoclObject(Focl_Obj_Type type_, void* a)
 {
     Focl_Object* obj = (Focl_Object*)malloc(sizeof(Focl_Object));
     obj->refCount = 1;
     obj->type = type_;
     return obj;
 }
-Focl_Object* createStringFoclObject(Focl_Obj_Type type_, Focl_StringPool* strPool)
+Focl_Object* createStringFoclObject(Focl_Obj_Type type_, Focl_StringPool* strPool, void* a)
 {
     Focl_Object* obj = (Focl_Object*)malloc(sizeof(Focl_Object));
     obj->refCount = 1;
@@ -1610,7 +1652,7 @@ Focl_Object* createStringFoclObject(Focl_Obj_Type type_, Focl_StringPool* strPoo
 }
 void FoclObjectAssign(Focl_Object* dst, Focl_Object* src, Focl_StringPool* strPool)
 {
-    /* This is a strong type language! */
+    /* This is a strong type language! You should do a type check before every assign! */
 
     if (isFoclObjectUseString(src))
     {
@@ -1623,26 +1665,10 @@ void FoclObjectAssign(Focl_Object* dst, Focl_Object* src, Focl_StringPool* strPo
         dst->as = src->as;
     }
 }
-Focl_Object* FoclObjectError(Focl_StringPool* strPool, const char* errmsg)
+Focl_Object* FoclObjectError(Focl_StrObjPool* objPool, Focl_StringPool* strPool, const char* errmsg)
 {
-    Focl_Object* obj = createStringFoclObject(FOCL_OBJ_TYPE_ERROR, strPool);
-    FoclStrAssign(obj->as.data, errmsg);
-    return obj;
-}
-Focl_Object* createFoclObjectAssign(Focl_StringPool* strPool, Focl_Object* src)
-{
-    Focl_Object* obj = (Focl_Object*)malloc(sizeof(Focl_Object));
-    obj->refCount = 1;
-    obj->type = src->type;
-    if (isFoclObjectUseString(src))
-    {
-        obj->as.data = FoclStringPoolAlloc(strPool);
-        FoclStrAssignStr(obj->as.data, src->as.data);
-    }
-    else
-    {
-        obj->as = src->as;
-    }
+    Focl_Object* obj = FoclStringObjPoolAlloc(objPool, strPool, FOCL_OBJ_TYPE_ERROR);
+    FoclStrAssign(FoclObjectGetString(obj), errmsg);
     return obj;
 }
 Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_StringView* strView)
@@ -1654,24 +1680,21 @@ Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_Strin
      */
     Focl_Object* obj;
     Focl_StringPool* strPool = context->strPool;
+    Focl_ObjWithNoStrPool* objPool = context->objWithNoStrPool;
+    Focl_StrObjPool* strObjPool = context->strObjPool;
     if (Focl_isInteger_View(strView))
     {
-        obj = createFoclObject(FOCL_OBJ_TYPE_INT);
+        obj = FoclObjWithNoStringPoolAlloc(objPool, FOCL_OBJ_TYPE_INT);
         FoclObjectBoxInt(obj, Focl_StrToInt_View(strView));
     }
     else if (Focl_isFloat_View(strView))
     {
-        obj = createFoclObject(FOCL_OBJ_TYPE_FLOAT);
+        obj = FoclObjWithNoStringPoolAlloc(objPool, FOCL_OBJ_TYPE_FLOAT);
         FoclObjectBoxFloat(obj, Focl_StrToFloat_View(strView));
-    }
-    else if (Focl_isBlock_View(strView))
-    {
-        obj = createStringFoclObject(FOCL_OBJ_TYPE_BLOCK, strPool);
-        FoclStrAssignView(obj->as.data, strView);
     }
     else if (Focl_isString_View(strView))
     {
-        obj = createStringFoclObject(FOCL_OBJ_TYPE_STR, strPool);
+        obj = FoclStringObjPoolAlloc(strObjPool, strPool, FOCL_OBJ_TYPE_STR);
         FoclStrExpansion(context, obj->as.data, strView);
     }
     else if (Focl_isVarSubstition_View(strView))
@@ -1680,7 +1703,7 @@ Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_Strin
         obj = FindObjectInContext(context, &varStrView);
         if (obj == FOCL_OBJECT_ERROR)
         {
-            return FoclObjectError(strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+            return FoclObjectError(strObjPool, strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
         }
         FoclObjectRetain(obj);
         return obj;
@@ -1692,22 +1715,22 @@ Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_Strin
     }
     else
     {
-        obj = createStringFoclObject(FOCL_OBJ_TYPE_STR, strPool);
+        obj = FoclStringObjPoolAlloc(strObjPool, strPool, FOCL_OBJ_TYPE_STR);
         FoclStrAssignView(obj->as.data, strView);
     }
     return obj;
 }
-Focl_Object* FoclObjectVoid(Focl_StringPool* strPool)
+Focl_Object* FoclObjectVoid(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool)
 {
-    return createStringFoclObject(FOCL_OBJ_TYPE_VOID, strPool);
+    return FoclStringObjPoolAlloc(strObjPool, strPool, FOCL_OBJ_TYPE_VOID);
 }
-Focl_Object* FoclObjectBool(Focl_Obj_Bool booleanValue)
+Focl_Object* FoclObjectBool(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Bool booleanValue)
 {
-    Focl_Object* obj = createFoclObject(FOCL_OBJ_TYPE_BOOL);
+    Focl_Object* obj = FoclObjWithNoStringPoolAlloc(objPool, FOCL_OBJ_TYPE_BOOL);
     obj->as.i = booleanValue;
     return obj;
 }
-void freeFoclObject(Focl_Object* obj, Focl_StringPool* strPool)
+void freeFoclObject(Focl_Object* obj, Focl_StringPool* strPool, void* a)
 {
     if (isFoclObjectUseString(obj))
     {
@@ -1723,18 +1746,132 @@ void FoclObjectRetain(Focl_Object* obj)
         obj->refCount++;
     }
 }
-void FoclObjectRelease(Focl_Object* obj, Focl_StringPool* strPool)
+void FoclObjectRelease(Focl_Object* obj, Focl_Context* context)
 {
     obj->refCount--;
     if (obj->refCount == 0)
     {
-        freeFoclObject(obj, strPool);
+        if (!isFoclObjectUseString(obj))
+        {
+            FoclObjWithNoStringPoolFree(obj, context->objWithNoStrPool);
+        }
+        else
+        {
+            FoclStringObjPoolFree(obj, context->strObjPool);
+        }
     }
 }
+
 void FoclObjectReleaseOpDtVoid(void* obj, void* ctx)
 {
-    FoclObjectRelease((Focl_Object*)obj, (Focl_StringPool*)ctx);
+    FoclObjectRelease(obj, ctx);
 }
+
+void FoclObjectWithNoStringOpClVoid(void* obj_, void* ctx)
+{
+    (void)ctx;
+    Focl_Object* obj = obj_;
+    obj->refCount = 1;
+}
+
+void FoclStringObjectOpCt(Focl_Object* obj, Focl_StringPool* strPool)
+{
+    obj->as.data = FoclStringPoolAlloc(strPool);
+}
+void FoclStringObjectOpCtVoid(void* obj, void* strPool)
+{
+    FoclStringObjectOpCt(obj, strPool);
+}
+void FoclStringObjectOpDt(Focl_Object* obj, Focl_StringPool* strPool)
+{
+    FoclStringPoolFree(FoclObjectGetString(obj), strPool);
+}
+void FoclStringObjectOpDtVoid(void* obj, void* strPool)
+{
+    FoclStringObjectOpDt(obj, strPool);
+}
+void FoclStringObjectOpCl(Focl_Object* obj)
+{
+    obj->refCount = 1;
+    FoclStrClear(FoclObjectGetString(obj));
+}
+void FoclStringObjectOpClVoid(void* obj, void* ctx)
+{
+    (void)ctx;
+    FoclStringObjectOpCl(obj);
+}
+
+/* OBJ POOL */
+
+Focl_ObjWithNoStrPool* createFoclObjWithNoStringPool()
+{
+    return createFoclPool(sizeof(Focl_Object), FOCL_OBJ_POOL_ITEM_PER_BLOCK, FOCL_OBJ_POOL_BLOCK_COUNT_INIT, NULL);
+}
+Focl_StrObjPool* createFoclStringObjPool(Focl_StringPool* strPool)
+{
+    Focl_TypeOpCt opCt = {.ctx = strPool, .func = FoclStringObjectOpCtVoid};
+    return createFoclPool(sizeof(Focl_Object), FOCL_OBJ_POOL_ITEM_PER_BLOCK, FOCL_OBJ_POOL_BLOCK_COUNT_INIT, &opCt);
+}
+Focl_Object* FoclObjWithNoStringPoolAlloc(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Type type_)
+{
+    Focl_TypeOpCl opCl = {.ctx = NULL, .func = FoclObjectWithNoStringOpClVoid};
+    Focl_Object* obj = (Focl_Object*)FoclPoolAllocEx(objPool, NULL, &opCl);
+    obj->type = type_;
+    return obj;
+}
+Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* objPool, Focl_StringPool* strPool, Focl_Obj_Type type_)
+{
+    /* it won't do anything for detail string type. except clear string no matter whether it's void type. */
+    Focl_TypeOpCt opCt = {.ctx = strPool, .func = FoclStringObjectOpCtVoid};
+    Focl_TypeOpCl opCl = {.ctx = NULL, .func = FoclObjectWithNoStringOpClVoid};
+    Focl_Object* obj = (Focl_Object*)FoclPoolAllocEx(objPool, &opCt, &opCl);
+    obj->type = type_;
+    return obj;
+}
+
+Focl_Object* FoclObjPoolWithNoStringAllocAssign(Focl_StrObjPool* objPool, Focl_Object* src)
+{
+    Focl_Object* obj = FoclObjWithNoStringPoolAlloc(objPool, src->type);
+    obj->as = src->as;
+    return obj;
+}
+Focl_Object* FoclStringObjPoolAllocAssign(Focl_StrObjPool* objPool, Focl_StringPool* strPool, Focl_Object* src)
+{
+    Focl_Object* obj = FoclStringObjPoolAlloc(objPool, strPool, src->type);
+    FoclStrAssignStr(FoclObjectGetString(obj), FoclObjectGetString(src));
+    return obj;
+}
+Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src)
+{
+    /* Universal pool alloc assign function */
+    if (isFoclObjectUseString(src))
+    {
+        return FoclStringObjPoolAllocAssign(context->strObjPool, context->strPool, src);
+    }
+    else
+    {
+        return FoclObjPoolWithNoStringAllocAssign(context->objWithNoStrPool, src);
+    }
+}
+void FoclObjWithNoStringPoolFree(Focl_Object* obj, Focl_ObjWithNoStrPool* objPool)
+{
+    FoclPoolFree(obj, objPool);
+}
+void FoclStringObjPoolFree(Focl_Object* obj, Focl_StrObjPool* objPool)
+{
+    FoclPoolFree(obj, objPool);
+}
+void freeFoclObjWithNoStringPool(Focl_ObjWithNoStrPool* objPool)
+{
+    freeFoclPool(objPool, NULL);
+}
+void freeFoclStringObjPool(Focl_StrObjPool* objPool, Focl_StringPool* strPool)
+{
+    Focl_TypeOpDt opDt = {.ctx = strPool, .func = FoclStringObjectOpDtVoid};
+    freeFoclPool(objPool, &opDt);
+}
+
+/* OBJ POOL */
 
 /* OBJECT TABLE */
 
@@ -1749,18 +1886,23 @@ Focl_Object* FindObjectInTable(Focl_ObjTable* objTable, const Focl_String* strVi
 {
     return (Focl_Object*)FoclHashTableFind(objTable, (void*)strView, StrKeyCompare);
 }
-void LinkObjectWithName_View(Focl_ObjTable* objTable, Focl_StringPool* strPool, Focl_Object* obj, const Focl_StringView* strView)
+void LinkObjectWithName_View(Focl_Context* context, Focl_Object* obj, const Focl_StringView* strView)
 {
-    Focl_String* str = FoclStringPoolAlloc(strPool);
+    Focl_String* str = FoclStringPoolAlloc(context->strPool);
     FoclStrAssignView(str, strView);
-    Focl_KeyOpDt keyOpDt = {.ctx = strPool, .func = FoclStringPoolFreeOpDtVoid};
-    Focl_ValueOpDt valueOpDt = {.ctx = strPool, .func = FoclObjectReleaseOpDtVoid};
-    FoclHashTableInsert(objTable, str, obj, StrKeyCompare, &keyOpDt, NULL);
+    Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
+    Focl_ValueOpDt valueOpDt = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
+    FoclHashTableInsert(context->curEnv->objTable, str, obj, StrKeyCompare, &keyOpDt, NULL);
 }
-void freeFoclObjTable(Focl_ObjTable* objTable, Focl_StringPool* strPool)
+void freeFoclObjTable(Focl_ObjTable* objTable, Focl_Context* context)
 {
-    Focl_KeyOpDt keyOpDt = {.ctx = strPool, .func = FoclStringPoolFreeOpDtVoid};
-    Focl_ValueOpDt valueOpDt = {.ctx = strPool, .func = FoclObjectReleaseOpDtVoid};
+    /*
+     * So you may ask, why don't we just use context as the only arg? Well, that's because
+     * a "free" func is usually use itself's pointer (as "this" in cpp) as the first arg.
+     * and also... one day we may also "poolize" the obj table too. Not really, I mean
+     */
+    Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
+    Focl_ValueOpDt valueOpDt = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
     freeFoclHashTable(objTable, &keyOpDt, &valueOpDt);
 }
 
@@ -1851,10 +1993,10 @@ Focl_Environment* createFoclEnvironment(Focl_Environment* parent_) /* If parent_
     env->objTable = createFoclObjTable();
     return env;
 }
-void freeFoclEnvironment(Focl_Environment* env, Focl_StringPool* strPool)
+void freeFoclEnvironment(Focl_Environment* env, Focl_Context* context)
 {
-    freeFoclCommandTable(env->cmdTable, strPool);
-    freeFoclObjTable(env->objTable, strPool);
+    freeFoclCommandTable(env->cmdTable, context->strPool);
+    freeFoclObjTable(env->objTable, context);
     free(env);
 }
 
@@ -1869,6 +2011,8 @@ Focl_Context* createFoclContext()
     context->curEnv = context->globalEnv;
     context->strPool = createFoclStringPool();
     context->vecPool = createFoclVectorPool();
+    context->objWithNoStrPool = createFoclObjWithNoStringPool();
+    context->strObjPool = createFoclStringObjPool(context->strPool);
     context->exitCode = 0;
     context->hasBreakBuf = false;
     context->hasContinueBuf = false;
@@ -1884,10 +2028,12 @@ void freeFoclContext(Focl_Context* context)
     do
     {
         pEnv = cEnv->parent;
-        freeFoclEnvironment(cEnv, context->strPool);
+        freeFoclEnvironment(cEnv, context);
         cEnv = pEnv;
     }
     while (cEnv != NULL);
+    freeFoclStringObjPool(context->strObjPool, context->strPool);
+    freeFoclObjWithNoStringPool(context->objWithNoStrPool);
     freeFoclStringPool(context->strPool);
     freeFoclVectorPool(context->vecPool);
     free(context);
@@ -1902,7 +2048,7 @@ void FoclContextExitFreeChildEnv(Focl_Context* context)
     /* Well, maybe I should protect the system not leave the root env. But
        doesn't need. You should prevent it logically. */
     Focl_Environment* parentEnv = context->curEnv->parent;
-    freeFoclEnvironment(context->curEnv, context->strPool);
+    freeFoclEnvironment(context->curEnv, context);
     context->curEnv = parentEnv;
 }
 
@@ -2004,12 +2150,12 @@ Focl_Object* exprParseNumber(Focl_ExprParser* p)
     Focl_Object* obj;
     if (hasDot)
     {
-        obj = createFoclObject(FOCL_OBJ_TYPE_FLOAT);
+        obj = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
         obj->as.f = Focl_StrToFloat(start);
     }
     else
     {
-        obj = createFoclObject(FOCL_OBJ_TYPE_INT);
+        obj = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
         obj->as.i = Focl_StrToInt(start);
     }
 
@@ -2045,7 +2191,7 @@ Focl_Object* exprParseString(Focl_ExprParser* p)
     p->pos++;
 
     Focl_StringView sv = {len, (char*)start};
-    Focl_Object* obj = createStringFoclObject(FOCL_OBJ_TYPE_STR, p->context->strPool);
+    Focl_Object* obj = FoclStringObjPoolAlloc(p->context->strObjPool, p->context->strObjPool, FOCL_OBJ_TYPE_STR);
     FoclStrAssignView(obj->as.data, &sv);
     return obj;
 }
@@ -2073,7 +2219,7 @@ Focl_Object* exprParseVariable(Focl_ExprParser* p)
     Focl_Object* var = FindObjectInContext(p->context, &varName);
     if (var == FOCL_OBJECT_ERROR)
     {
-        return FoclObjectError(p->context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+        return FoclObjectError(p->context->strObjPool, p->context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
     }
     FoclObjectRetain(var);
     return var;
@@ -2095,9 +2241,9 @@ Focl_Object* exprParsePrimary(Focl_ExprParser* p)
         }
         if (obj)
         {
-            FoclObjectRelease(obj, p->context->strPool);
+            FoclObjectRelease(obj, p->context);
         }
-        return FoclObjectError(p->context->strPool, "Missing closing parenthesis");
+        return FoclObjectError(p->context->objWithNoStrPool, p->context->strPool, "Missing closing parenthesis");
     }
     if (*p->pos == '-')
     {
@@ -2111,20 +2257,20 @@ Focl_Object* exprParsePrimary(Focl_ExprParser* p)
         Focl_Object* result = NULL;
         if (operand->type == FOCL_OBJ_TYPE_INT)
         {
-            result = createFoclObject(FOCL_OBJ_TYPE_INT);
+            result = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
             result->as.i = -FoclObjectUnboxInt(operand);
         }
         else if (operand->type == FOCL_OBJ_TYPE_FLOAT)
         {
-            result = createFoclObject(FOCL_OBJ_TYPE_FLOAT);
+            result = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
             result->as.f = -FoclObjectUnboxFloat(operand);
         }
         else
         {
-            FoclObjectRelease(operand, p->context->strPool);
-            return FoclObjectError(p->context->strPool, "Cannot negate non-numeric value");
+            FoclObjectRelease(operand, p->context);
+            return FoclObjectError(p->context->strObjPool, p->context->strPool, "Cannot negate non-numeric value");
         }
-        FoclObjectRelease(operand, p->context->strPool);
+        FoclObjectRelease(operand, p->context);
         return result;
     }
     if (*p->pos == '"')
@@ -2140,7 +2286,7 @@ Focl_Object* exprParsePrimary(Focl_ExprParser* p)
         *p->pos == '_')
         return exprParseVariable(p);
 
-    return FoclObjectError(p->context->strPool, "Unexpected character in expression");
+    return FoclObjectError(p->context->strObjPool, p->context->strPool, "Unexpected character in expression");
 }
 Focl_Object* exprParseMulDiv(Focl_ExprParser* p)
 {
@@ -2169,7 +2315,7 @@ Focl_Object* exprParseMulDiv(Focl_ExprParser* p)
         Focl_Object* right = exprParsePrimary(p);
         if (right == NULL || right->type == FOCL_OBJ_TYPE_ERROR)
         {
-            FoclObjectRelease(left, p->context->strPool);
+            FoclObjectRelease(left, p->context);
             return right;
         }
 
@@ -2178,24 +2324,24 @@ Focl_Object* exprParseMulDiv(Focl_ExprParser* p)
             double l = (left->type == FOCL_OBJ_TYPE_INT) ? (double)left->as.i : left->as.f;
             double r = (right->type == FOCL_OBJ_TYPE_INT) ? (double)right->as.i : right->as.f;
 
-            FoclObjectRelease(left, p->context->strPool);
-            FoclObjectRelease(right, p->context->strPool);
+            FoclObjectRelease(left, p->context);
+            FoclObjectRelease(right, p->context);
 
-            left = createFoclObject(FOCL_OBJ_TYPE_FLOAT);
+            left = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
             switch (op)
             {
                 case '*': left->as.f = l * r; break;
                 case '/':
                     if (r == 0.0)
                     {
-                        FoclObjectRelease(left, p->context->strPool);
-                        return FoclObjectError(p->context->strPool, "Division by zero");
+                        FoclObjectRelease(left, p->context);
+                        return FoclObjectError(p->context->strObjPool, p->context->strPool, "Division by zero");
                     }
                     left->as.f = l / r;
                     break;
                 case '%':
-                    FoclObjectRelease(left, p->context->strPool);
-                    return FoclObjectError(p->context->strPool, "Modulo requires integer operands");
+                    FoclObjectRelease(left, p->context);
+                    return FoclObjectError(p->context->strObjPool, p->context->strPool, "Modulo requires integer operands");
             }
         }
         else if (left->type == FOCL_OBJ_TYPE_INT && right->type == FOCL_OBJ_TYPE_INT)
@@ -2203,26 +2349,26 @@ Focl_Object* exprParseMulDiv(Focl_ExprParser* p)
             Focl_Obj_Int l = left->as.i;
             Focl_Obj_Int r = right->as.i;
 
-            FoclObjectRelease(left, p->context->strPool);
-            FoclObjectRelease(right, p->context->strPool);
+            FoclObjectRelease(left, p->context);
+            FoclObjectRelease(right, p->context);
 
-            left = createFoclObject(FOCL_OBJ_TYPE_INT);
+            left = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
             switch (op)
             {
                 case '*': left->as.i = l * r; break;
                 case '/':
                     if (r == 0)
                     {
-                        FoclObjectRelease(left, p->context->strPool);
-                        return FoclObjectError(p->context->strPool, "Division by zero");
+                        FoclObjectRelease(left, p->context);
+                        return FoclObjectError(p->context->strObjPool, p->context->strPool, "Division by zero");
                     }
                     left->as.i = l / r;
                     break;
                 case '%':
                     if (r == 0)
                     {
-                        FoclObjectRelease(left, p->context->strPool);
-                        return FoclObjectError(p->context->strPool, "Modulo by zero");
+                        FoclObjectRelease(left, p->context);
+                        return FoclObjectError(p->context->strObjPool, p->context->strPool, "Modulo by zero");
                     }
                     left->as.i = l % r;
                     break;
@@ -2230,9 +2376,9 @@ Focl_Object* exprParseMulDiv(Focl_ExprParser* p)
         }
         else
         {
-            FoclObjectRelease(left, p->context->strPool);
-            FoclObjectRelease(right, p->context->strPool);
-            return FoclObjectError(p->context->strPool, "Invalid operand types for arithmetic");
+            FoclObjectRelease(left, p->context);
+            FoclObjectRelease(right, p->context);
+            return FoclObjectError(p->context->strObjPool, p->context->strPool, "Invalid operand types for arithmetic");
         }
     }
 
@@ -2263,7 +2409,7 @@ Focl_Object* exprParseAddSub(Focl_ExprParser* p)
         Focl_Object* right = exprParseMulDiv(p);
         if (right == NULL || right->type == FOCL_OBJ_TYPE_ERROR)
         {
-            FoclObjectRelease(left, p->context->strPool);
+            FoclObjectRelease(left, p->context);
             return right;
         }
         if (left->type == FOCL_OBJ_TYPE_FLOAT || right->type == FOCL_OBJ_TYPE_FLOAT)
@@ -2271,10 +2417,10 @@ Focl_Object* exprParseAddSub(Focl_ExprParser* p)
             double l = (left->type == FOCL_OBJ_TYPE_INT) ? (double)left->as.i : left->as.f;
             double r = (right->type == FOCL_OBJ_TYPE_INT) ? (double)right->as.i : right->as.f;
 
-            FoclObjectRelease(left, p->context->strPool);
-            FoclObjectRelease(right, p->context->strPool);
+            FoclObjectRelease(left, p->context);
+            FoclObjectRelease(right, p->context);
 
-            left = createFoclObject(FOCL_OBJ_TYPE_FLOAT);
+            left = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
             left->as.f = (op == '+') ? (l + r) : (l - r);
         }
         else if (left->type == FOCL_OBJ_TYPE_INT && right->type == FOCL_OBJ_TYPE_INT)
@@ -2282,17 +2428,17 @@ Focl_Object* exprParseAddSub(Focl_ExprParser* p)
             Focl_Obj_Int l = left->as.i;
             Focl_Obj_Int r = right->as.i;
 
-            FoclObjectRelease(left, p->context->strPool);
-            FoclObjectRelease(right, p->context->strPool);
+            FoclObjectRelease(left, p->context);
+            FoclObjectRelease(right, p->context);
 
-            left = createFoclObject(FOCL_OBJ_TYPE_INT);
+            left = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
             left->as.i = (op == '+') ? (l + r) : (l - r);
         }
         else
         {
-            FoclObjectRelease(left, p->context->strPool);
-            FoclObjectRelease(right, p->context->strPool);
-            return FoclObjectError(p->context->strPool, "Invalid operand types for arithmetic");
+            FoclObjectRelease(left, p->context);
+            FoclObjectRelease(right, p->context);
+            return FoclObjectError(p->context->strObjPool, p->context->strPool, "Invalid operand types for arithmetic");
         }
     }
 
@@ -2323,15 +2469,15 @@ Focl_Object* exprParseComparison(Focl_ExprParser* p)
             Focl_Object* right = exprParseAddSub(p);
             if (right == NULL || right->type == FOCL_OBJ_TYPE_ERROR)
             {
-                FoclObjectRelease(left, p->context->strPool);
+                FoclObjectRelease(left, p->context);
                 return right;
             }
 
             if (left->type != FOCL_OBJ_TYPE_INT || right->type != FOCL_OBJ_TYPE_INT)
             {
-                FoclObjectRelease(left, p->context->strPool);
-                FoclObjectRelease(right, p->context->strPool);
-                return FoclObjectError(p->context->strPool, "Comparison requires integer operands");
+                FoclObjectRelease(left, p->context);
+                FoclObjectRelease(right, p->context);
+                return FoclObjectError(p->context->strObjPool, p->context->strPool, "Comparison requires integer operands");
             }
 
             Focl_Obj_Int l = left->as.i;
@@ -2347,9 +2493,9 @@ Focl_Object* exprParseComparison(Focl_ExprParser* p)
                 case 5: result = (l > r); break;
             }
 
-            FoclObjectRelease(left, p->context->strPool);
-            FoclObjectRelease(right, p->context->strPool);
-            return FoclObjectBool(result ? FOCL_OBJ_TRUE : FOCL_OBJ_FALSE);
+            FoclObjectRelease(left, p->context);
+            FoclObjectRelease(right, p->context);
+            return FoclObjectBool(p->context->strObjPool, result ? FOCL_OBJ_TRUE : FOCL_OBJ_FALSE);
         }
     }
 
@@ -2751,7 +2897,7 @@ void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_String
                             dst->data[dst->length] = '\0';
                         }
                     }
-                    FoclObjectRelease(cmdResult, context->strPool);
+                    FoclObjectRelease(cmdResult, context);
                 }
                 readPos = cmdEnd + 1;
             }
@@ -2795,7 +2941,7 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
     size_t len = end - start;
     if (len == 0)
     {
-        return FoclObjectError(context->strPool, "Empty boolean expression");
+        return FoclObjectError(context->strObjPool, context->strPool, "Empty boolean expression");
     }
 
     Focl_StringView trimmed = {len, (char*)start};
@@ -2806,8 +2952,8 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
         Focl_Object* innerObj = Focl_exprBool(context, &inner);
         if (innerObj->type == FOCL_OBJ_TYPE_ERROR) return innerObj;
         Focl_Obj_Bool val = innerObj->as.i;
-        FoclObjectRelease(innerObj, context->strPool);
-        return FoclObjectBool(!val);
+        FoclObjectRelease(innerObj, context);
+        return FoclObjectBool(context->objWithNoStrPool, !val);
     }
 
     if (trimmed.strPtr[0] == '(' && trimmed.strPtr[trimmed.len - 1] == ')')
@@ -2832,14 +2978,14 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
                 Focl_Object* leftObj = Focl_exprBool(context, &left);
                 if (leftObj->type == FOCL_OBJ_TYPE_ERROR) return leftObj;
                 Focl_Obj_Bool lv = leftObj->as.i;
-                FoclObjectRelease(leftObj, context->strPool);
-                if (!lv) return FoclObjectBool(FOCL_OBJ_FALSE);
+                FoclObjectRelease(leftObj, context);
+                if (!lv) return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_FALSE);
 
                 Focl_Object* rightObj = Focl_exprBool(context, &right);
                 if (rightObj->type == FOCL_OBJ_TYPE_ERROR) return rightObj;
                 Focl_Obj_Bool rv = rightObj->as.i;
-                FoclObjectRelease(rightObj, context->strPool);
-                return FoclObjectBool(rv);
+                FoclObjectRelease(rightObj, context);
+                return FoclObjectBool(context->objWithNoStrPool, rv);
             }
             if (c == '|' && i + 1 < trimmed.len && trimmed.strPtr[i + 1] == '|')
             {
@@ -2849,14 +2995,14 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
                 Focl_Object* leftObj = Focl_exprBool(context, &left);
                 if (leftObj->type == FOCL_OBJ_TYPE_ERROR) return leftObj;
                 Focl_Obj_Bool lv = leftObj->as.i;
-                FoclObjectRelease(leftObj, context->strPool);
-                if (lv) return FoclObjectBool(FOCL_OBJ_TRUE);
+                FoclObjectRelease(leftObj, context);
+                if (lv) return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_TRUE);
 
                 Focl_Object* rightObj = Focl_exprBool(context, &right);
                 if (rightObj->type == FOCL_OBJ_TYPE_ERROR) return rightObj;
                 Focl_Obj_Bool rv = rightObj->as.i;
-                FoclObjectRelease(rightObj, context->strPool);
-                return FoclObjectBool(rv);
+                FoclObjectRelease(rightObj, context);
+                return FoclObjectBool(context->objWithNoStrPool, rv);
             }
         }
     }
@@ -2882,23 +3028,23 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
                 while (right.len > 0 && isspace(right.strPtr[right.len - 1])) right.len--;
 
                 if (left.len == 0 || right.len == 0)
-                    return FoclObjectError(context->strPool, "Missing operand in comparison");
+                    return FoclObjectError(context->strObjPool, context->strPool, "Missing operand in comparison");
 
                 Focl_Object* leftObj = getFoclObjectWithStringView(context, &left);
                 Focl_Object* rightObj = getFoclObjectWithStringView(context, &right);
 
                 if (leftObj->type == FOCL_OBJ_TYPE_ERROR || rightObj->type == FOCL_OBJ_TYPE_ERROR)
                 {
-                    FoclObjectRelease(leftObj, context->strPool);
-                    FoclObjectRelease(rightObj, context->strPool);
-                    return FoclObjectError(context->strPool, "Invalid operand in comparison");
+                    FoclObjectRelease(leftObj, context);
+                    FoclObjectRelease(rightObj, context);
+                    return FoclObjectError(context->strObjPool, context->strPool, "Invalid operand in comparison");
                 }
 
                 if (leftObj->type != FOCL_OBJ_TYPE_INT || rightObj->type != FOCL_OBJ_TYPE_INT)
                 {
-                    FoclObjectRelease(leftObj, context->strPool);
-                    FoclObjectRelease(rightObj, context->strPool);
-                    return FoclObjectError(context->strPool, "Comparison operands must be integers");
+                    FoclObjectRelease(leftObj, context);
+                    FoclObjectRelease(rightObj, context);
+                    return FoclObjectError(context->strObjPool, context->strPool, "Comparison operands must be integers");
                 }
 
                 Focl_Obj_Int l = leftObj->as.i;
@@ -2914,20 +3060,20 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
                     case 5: result = (l > r); break;
                 }
 
-                FoclObjectRelease(leftObj, context->strPool);
-                FoclObjectRelease(rightObj, context->strPool);
-                return FoclObjectBool(result);
+                FoclObjectRelease(leftObj, context);
+                FoclObjectRelease(rightObj, context);
+                return FoclObjectBool(context->objWithNoStrPool, result);
             }
         }
     }
 
     if (trimmed.len == 4 && memcmp(trimmed.strPtr, "true", 4) == 0)
     {
-        return FoclObjectBool(FOCL_OBJ_TRUE);
+        return FoclObjectBool(context->strObjPool, FOCL_OBJ_TRUE);
     }
     if (trimmed.len == 5 && memcmp(trimmed.strPtr, "false", 5) == 0)
     {
-        return FoclObjectBool(FOCL_OBJ_FALSE);
+        return FoclObjectBool(context->strObjPool, FOCL_OBJ_FALSE);
     }
 
     Focl_Object* obj = getFoclObjectWithStringView(context, &trimmed);
@@ -2939,13 +3085,13 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
 
     if (obj->type != FOCL_OBJ_TYPE_BOOL)
     {
-        FoclObjectRelease(obj, context->strPool);
-        return FoclObjectError(context->strPool, "Expected boolean expression, got non-boolean value");
+        FoclObjectRelease(obj, context);
+        return FoclObjectError(context->strObjPool, context->strPool, "Expected boolean expression, got non-boolean value");
     }
 
     Focl_Obj_Bool result = obj->as.i;
-    FoclObjectRelease(obj, context->strPool);
-    return FoclObjectBool(result);
+    FoclObjectRelease(obj, context);
+    return FoclObjectBool(context->objWithNoStrPool, result);
 }
 
 /* EXPRESSION */
@@ -2965,6 +3111,17 @@ Focl_StringView FoclObjVecAtAsStringToView(Focl_Vector* objVec, size_t idx)
     return strView;
 }
 
+#define FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, dsttype, strObjPool, strPool) \
+    obj = FoclObjVecAt(objVec, idx); \
+    if (obj->type != dsttype) \
+    { \
+        return FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG);\
+    } \
+
+#define FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_INT, strObjPool, strPool)
+#define FOCL_OBJ_VEC_AT_AS_FLOAT_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_FLOAT, strObjPool, strPool)
+#define FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_STR, strObjPool, strPool)
+
 Focl_Object* Focl_parseBlock(Focl_Context* context, Focl_StringView* strView)
 {
     Focl_StringView inner = FoclStringViewPeelBoth(strView);
@@ -2976,12 +3133,12 @@ Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* str
     Focl_StringView cmdView = getNextWord(&remaining);
     if (cmdView.strPtr == NULL || cmdView.len == 0)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
     }
     Focl_Command* cmd = FindCommandInContext(context, &cmdView);
     if (cmd == FOCL_COMMAND_ERROR)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
     }
     Focl_Vector* vec = FoclVectorPoolAlloc(context->vecPool);
     Focl_Object* obj;
@@ -2998,7 +3155,7 @@ Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* str
     obj = cmd->func(context, vec, cmd);
     for (size_t i = 0; i < FoclVectorGetSize(vec); i++)
     {
-        FoclObjectRelease(FoclObjVecAt(vec, i), context->strPool);
+        FoclObjectRelease(FoclObjVecAt(vec, i), context);
     }
     FoclVectorPoolFree(vec, context->vecPool);
     return obj;
@@ -3006,7 +3163,7 @@ Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* str
 Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView)
 {
     Focl_StringView remaining = *strView;
-    Focl_Object* lastResult = FoclObjectVoid(context->strPool);
+    Focl_Object* lastResult = FoclObjectVoid(context->strObjPool, context->strPool);
     while (1)
     {
         Focl_StringView cmdView = getNextLine(&remaining);
@@ -3022,7 +3179,7 @@ Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* s
             continue;
         }
         Focl_Object* result = Focl_parseCommand(context, &cmdView);
-        FoclObjectRelease(lastResult, context->strPool);
+        FoclObjectRelease(lastResult, context);
         lastResult = result;
         if (result->type == FOCL_OBJ_TYPE_ERROR)
         {
@@ -3062,7 +3219,6 @@ void FoclObjectPrint(Focl_Object* obj)
             printf("%s", obj->as.i ? "true" : "false");
             break;
         case FOCL_OBJ_TYPE_STR: /* FALLTHROUGH */
-        case FOCL_OBJ_TYPE_BLOCK: /* FALLTHROUGH */
         case FOCL_OBJ_TYPE_ERROR:
             printf("%s", FoclStrCStr(obj->as.data));
             break;
@@ -3073,20 +3229,20 @@ void FoclObjectPrint(Focl_Object* obj)
             break;
     }
 }
-Focl_Object* FoclObjectScan(Focl_StringPool* strPool, Focl_Object* obj)
+Focl_Object* FoclObjectScan(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Object* obj)
 {
     size_t len;
     char* input = Focl_getline(stdin, &len);
     if (input == NULL)
     {
-        return FoclObjectError(strPool, FOCL_ERR_READ_ERR_STDIN);
+        return FoclObjectError(strObjPool, strPool, FOCL_ERR_READ_ERR_STDIN);
     }
     Focl_Object* result = obj;
     if (Focl_isInteger(input))
     {
         if (obj->type != FOCL_OBJ_TYPE_INT)
         {
-            result = FoclObjectError(strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+            result = FoclObjectError(strObjPool, strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
         }
         else
         {
@@ -3097,7 +3253,7 @@ Focl_Object* FoclObjectScan(Focl_StringPool* strPool, Focl_Object* obj)
     {
         if (obj->type != FOCL_OBJ_TYPE_FLOAT)
         {
-            result = FoclObjectError(strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+            result = FoclObjectError(strObjPool, strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
         }
         else
         {
@@ -3108,7 +3264,7 @@ Focl_Object* FoclObjectScan(Focl_StringPool* strPool, Focl_Object* obj)
     {
         if (obj->type != FOCL_OBJ_TYPE_STR)
         {
-            result = FoclObjectError(strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+            result = FoclObjectError(strObjPool, strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
         }
         else
         {
@@ -3124,43 +3280,43 @@ Focl_Object* buildIn_puts(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     FoclObjectPrint(FoclObjVecAt(objVec, 0));
     putchar('\n');
-    return FoclObjectVoid(context->strPool);
+    return FoclObjectVoid(context->strObjPool, context->strPool);
 }
 Focl_Object* buildIn_gets(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 2)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_StringView inPipe = FoclObjVecAtAsStringToView(objVec, 0);
     if (FoclStringViewComp(&inPipe, "stdin") != 0)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNKNOWN_ARG);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
     }
     Focl_StringView varView = FoclObjVecAtAsStringToView(objVec, 1);
     Focl_Object* obj = FindObjectInContext(context, &varView);
     if (obj == FOCL_OBJECT_ERROR)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
     }
-    Focl_Object* scanRet = FoclObjectScan(context->strPool, obj);
+    Focl_Object* scanRet = FoclObjectScan(context->strObjPool, context->strPool, obj);
     if (scanRet->type == FOCL_OBJ_TYPE_ERROR)
     {
         return scanRet;
     }
-    return createFoclObjectAssign(context->strPool, obj);
+    return FoclObjPoolAllocAssign(context, obj);
 }
 Focl_Object* buildIn_set(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 2)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_StringView strView = FoclObjVecAtAsStringToView(objVec, 0);
     Focl_Object* obj = FindObjectInContext(context, &strView);
@@ -3168,8 +3324,8 @@ Focl_Object* buildIn_set(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
     {
         /* Create it! */
         
-        obj = createFoclObjectAssign(context->strPool, FoclObjVecAt(objVec, 1));
-        LinkObjectWithName_View(context->curEnv->objTable, context->strPool, obj, &strView);
+        obj = FoclObjPoolAllocAssign(context, FoclObjVecAt(objVec, 1));
+        LinkObjectWithName_View(context, obj, &strView);
     }
     else
     {
@@ -3180,34 +3336,34 @@ Focl_Object* buildIn_set(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
         Focl_Object* src = FoclObjVecAt(objVec, 1);
         if (obj->type != src->type)
         {
-            return FoclObjectError(context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
         }
         FoclObjectAssign(obj, src, context->strPool);
     }
 
-    return createFoclObjectAssign(context->strPool, obj);
+    return FoclObjPoolAllocAssign(context, obj);
 }
 Focl_Object* buildIn_unset(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_StringView strView = FoclObjVecAtAsStringToView(objVec, 0);
     Focl_Object* obj = FindObjectInContext(context, &strView);
     if (obj == FOCL_OBJECT_ERROR)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
     }
     Focl_String tmpStr;
     char saved = initTempFoclStringWithView(&tmpStr, &strView);
     Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
     FoclHashTableDelete(context->curEnv->objTable, &tmpStr, StrKeyCompare, &keyOpDt, NULL);
     restoreFoclStringViewFromTempString(&strView, saved);
-    FoclObjectRelease(obj, context->strPool);
+    FoclObjectRelease(obj, context);
     
-    return FoclObjectVoid(context->strPool);
+    return FoclObjectVoid(context->strObjPool, context->strPool);
 }
 Focl_Object* buildIn_incr(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -3215,17 +3371,17 @@ Focl_Object* buildIn_incr(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount == 0 || argCount > 2)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_StringView strView = FoclObjVecAtAsStringToView(objVec, 0);
     Focl_Object* obj = FindObjectInContext(context, &strView);
     if (obj == FOCL_OBJECT_ERROR)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
     }
     else if (obj->type != FOCL_OBJ_TYPE_INT)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
     }
     else
     {
@@ -3235,10 +3391,12 @@ Focl_Object* buildIn_incr(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
         }
         else
         {
-            obj->as.i += FoclObjVecAt(objVec, 1)->as.i;
+            Focl_Object* target;
+            FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 1, target, context->strObjPool, context->strPool);
+            obj->as.i += target->as.i;
         }
     }
-    return createFoclObjectAssign(context->strPool, obj);
+    return FoclObjPoolAllocAssign(context, obj);
 }
 Focl_Object* buildIn_if(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -3246,7 +3404,7 @@ Focl_Object* buildIn_if(Focl_Context* context, Focl_Vector* objVec, Focl_Command
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount < 2)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
 
     size_t i = 0;
@@ -3262,19 +3420,19 @@ Focl_Object* buildIn_if(Focl_Context* context, Focl_Vector* objVec, Focl_Command
 
         if (condResult->as.i == FOCL_OBJ_TRUE)
         {
-            FoclObjectRelease(condResult, context->strPool);
+            FoclObjectRelease(condResult, context);
             if (i + 1 >= argCount)
             {
-                return FoclObjectError(context->strPool, FOCL_ERR_NO_EXEC_BLOCK);
+                return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_NO_EXEC_BLOCK);
             }
             Focl_StringView execBlock = FoclObjVecAtAsStringToView(objVec, i + 1);
             return Focl_parseBlock(context, &execBlock);
         }
-        FoclObjectRelease(condResult, context->strPool);
+        FoclObjectRelease(condResult, context);
 
         if (i + 2 >= argCount)
         {
-            return FoclObjectVoid(context->strPool);
+            return FoclObjectVoid(context->strObjPool, context->strPool);
         }
 
         Focl_StringView next = FoclObjVecAtAsStringToView(objVec, i + 2);
@@ -3282,7 +3440,7 @@ Focl_Object* buildIn_if(Focl_Context* context, Focl_Vector* objVec, Focl_Command
         {
             if (i + 4 >= argCount)
             {
-                return FoclObjectError(context->strPool, FOCL_ERR_NO_EXEC_BLOCK);
+                return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_NO_EXEC_BLOCK);
             }
             i += 2;
         }
@@ -3290,17 +3448,17 @@ Focl_Object* buildIn_if(Focl_Context* context, Focl_Vector* objVec, Focl_Command
         {
             if (i + 3 >= argCount)
             {
-                return FoclObjectError(context->strPool, FOCL_ERR_NO_EXEC_BLOCK);
+                return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_NO_EXEC_BLOCK);
             }
             Focl_StringView elseBlock = FoclObjVecAtAsStringToView(objVec, i + 3);
             return Focl_parseBlock(context, &elseBlock);
         }
         else
         {
-            return FoclObjectError(context->strPool, FOCL_ERR_UNKNOWN_ARG);
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
         }
     }
-    return FoclObjectError(context->strPool, FOCL_ERR_YSNBH);
+    return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_YSNBH);
 }
 Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -3308,7 +3466,7 @@ Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount != 2)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_StringView condBlock = FoclObjVecAtAsStringToView(objVec, 0);
     Focl_StringView condExpr = FoclStringViewPeelBoth(&condBlock);
@@ -3317,7 +3475,7 @@ Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     {
         return condResult;
     }
-    Focl_Object* result = FoclObjectVoid(context->strPool);
+    Focl_Object* result = FoclObjectVoid(context->strObjPool, context->strPool);
     context->hasBreakBuf = true;
     context->hasContinueBuf = true;
 
@@ -3326,28 +3484,28 @@ Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
         volatile int breakJmp = setjmp(context->breakBuf);
         if (breakJmp != 0)
         {
-            FoclObjectRelease(condResult, context->strPool);
+            FoclObjectRelease(condResult, context);
             break;
         }
 
-        FoclObjectRelease(condResult, context->strPool);
+        FoclObjectRelease(condResult, context);
         condResult = NULL;
         Focl_StringView execBlock = FoclObjVecAtAsStringToView(objVec, 1);
         Focl_Object* bodyResult = Focl_parseBlock(context, &execBlock);
         if (bodyResult->type == FOCL_OBJ_TYPE_ERROR)
         {
-            FoclObjectRelease(result, context->strPool);
+            FoclObjectRelease(result, context);
             context->hasBreakBuf = false;
             context->hasContinueBuf = false;
             return bodyResult;
         }
-        FoclObjectRelease(result, context->strPool);
+        FoclObjectRelease(result, context);
         result = bodyResult;
         setjmp(context->continueBuf);
         condResult = Focl_exprBool(context, &condExpr);
         if (condResult->type == FOCL_OBJ_TYPE_ERROR)
         {
-            FoclObjectRelease(result, context->strPool);
+            FoclObjectRelease(result, context);
             context->hasBreakBuf = false;
             context->hasContinueBuf = false;
             return condResult;
@@ -3358,7 +3516,7 @@ Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     context->hasContinueBuf = false;
     if (condResult != NULL)
     {
-        FoclObjectRelease(condResult, context->strPool);
+        FoclObjectRelease(condResult, context);
     }
     return result;
 }
@@ -3368,13 +3526,13 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount != 4)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     for (size_t i = 0; i < 4; i++)
     {
         if (!isFoclObjectUseString(FoclObjVecAt(objVec, i)))
         {
-            return FoclObjectError(context->strPool, FOCL_ERR_MUST_BE_BLOCK);
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_MUST_BE_BLOCK);
         }
     }
     Focl_StringView initBlock = FoclObjVecAtAsStringToView(objVec, 0);
@@ -3383,12 +3541,12 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
     {
         return initResult;
     }
-    FoclObjectRelease(initResult, context->strPool);
+    FoclObjectRelease(initResult, context);
     Focl_StringView condBlock = FoclObjVecAtAsStringToView(objVec, 1);
     Focl_StringView condExpr = FoclStringViewPeelBoth(&condBlock);
     Focl_StringView updateBlock = FoclObjVecAtAsStringToView(objVec, 2);
     Focl_StringView bodyBlock = FoclObjVecAtAsStringToView(objVec, 3);
-    Focl_Object* result = FoclObjectVoid(context->strPool);
+    Focl_Object* result = FoclObjectVoid(context->strObjPool, context->strPool);
     context->hasBreakBuf = true;
     context->hasContinueBuf = true;
     while (1)
@@ -3396,17 +3554,17 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
         Focl_Object* condResult = Focl_exprBool(context, &condExpr);
         if (condResult->type == FOCL_OBJ_TYPE_ERROR)
         {
-            FoclObjectRelease(result, context->strPool);
+            FoclObjectRelease(result, context);
             context->hasBreakBuf = false;
             context->hasContinueBuf = false;
             return condResult;
         }
         if (condResult->as.i != FOCL_OBJ_TRUE)
         {
-            FoclObjectRelease(condResult, context->strPool);
+            FoclObjectRelease(condResult, context);
             break;
         }
-        FoclObjectRelease(condResult, context->strPool);
+        FoclObjectRelease(condResult, context);
         volatile int breakJmp = setjmp(context->breakBuf);
         if (breakJmp != 0)
         {
@@ -3417,24 +3575,24 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
         Focl_Object* bodyResult = Focl_parseBlock(context, &bodyBlock);
         if (bodyResult->type == FOCL_OBJ_TYPE_ERROR)
         {
-            FoclObjectRelease(result, context->strPool);
+            FoclObjectRelease(result, context);
             context->hasBreakBuf = false;
             context->hasContinueBuf = false;
             return bodyResult;
         }
-        FoclObjectRelease(result, context->strPool);
+        FoclObjectRelease(result, context);
         result = bodyResult;
         {
             setjmp(context->continueBuf);
             Focl_Object* updateResult = Focl_parseBlock(context, &updateBlock);
             if (updateResult->type == FOCL_OBJ_TYPE_ERROR)
             {
-                FoclObjectRelease(result, context->strPool);
+                FoclObjectRelease(result, context);
                 context->hasBreakBuf = false;
                 context->hasContinueBuf = false;
                 return updateResult;
             }
-            FoclObjectRelease(updateResult, context->strPool);
+            FoclObjectRelease(updateResult, context);
         }
     }
     context->hasBreakBuf = false;
@@ -3447,10 +3605,18 @@ Focl_Object* buildIn_typename(Focl_Context* context, Focl_Vector* objVec, Focl_C
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount != 1)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    Focl_Object* obj = FoclObjVecAt(objVec, 0);
-    Focl_Object* retValue = createStringFoclObject(FOCL_OBJ_TYPE_STR, context->strPool);
+    Focl_Object* objName;
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, objName, context->strObjPool, context->strPool);
+    Focl_Object* obj;
+    Focl_StringView objNameView = {.len = objName->as.data->length, .strPtr = objName->as.data->data};
+    obj = FindObjectInContext(context, &objNameView);
+    if (obj == FOCL_OBJECT_ERROR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+    }
+    Focl_Object* retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
     switch (obj->type)
     {
         case FOCL_OBJ_TYPE_INT:
@@ -3471,9 +3637,6 @@ Focl_Object* buildIn_typename(Focl_Context* context, Focl_Vector* objVec, Focl_C
         case FOCL_OBJ_TYPE_ERROR:
             FoclStrAssign(retValue->as.data, "Error");
             break;
-        case FOCL_OBJ_TYPE_BLOCK:
-            FoclStrAssign(retValue->as.data, "Block");
-            break;
         case FOCL_OBJ_TYPE_BYTECODE:
             FoclStrAssign(retValue->as.data, "Focl ByteCode");
             break;
@@ -3493,11 +3656,19 @@ Focl_Object* buildIn_typeid(Focl_Context* context, Focl_Vector* objVec, Focl_Com
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount != 1)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    Focl_Object* obj = FoclObjVecAt(objVec, 0);
-    Focl_Object* idObj = createFoclObject(FOCL_OBJ_TYPE_INT);
-    idObj->as.i = obj->type;
+    Focl_Object* objName;
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, objName, context->strObjPool, context->strPool);
+    Focl_Object* obj;
+    Focl_StringView objNameView = {.len = objName->as.data->length, .strPtr = objName->as.data->data};
+    obj = FindObjectInContext(context, &objNameView);
+    if (obj == FOCL_OBJECT_ERROR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+    }
+    Focl_Object* idObj = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+    FoclObjectBoxInt(idObj, (Focl_Obj_Int)obj->type);
     return idObj;
 }
 Focl_Object* buildIn_eval(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
@@ -3506,7 +3677,7 @@ Focl_Object* buildIn_eval(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount != 1)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_String* viewToEval = FoclObjVecAtAsString(objVec, 0);
     Focl_Object* obj = Focl_parseLine(context, viewToEval);
@@ -3517,12 +3688,12 @@ Focl_Object* buildIn_expr(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_Object* arg = FoclObjVecAt(objVec, 0);
     if (!isFoclObjectUseString(arg))
     {
-        return FoclObjectError(context->strPool, "expr requires a string argument");
+        return FoclObjectError(context->strObjPool, context->strPool, "expr requires a string argument");
     }
     Focl_StringView sv = {arg->as.data->length, arg->as.data->data};
     Focl_ExprParser parser;
@@ -3535,8 +3706,8 @@ Focl_Object* buildIn_expr(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
         exprSkipSpace(&parser);
         if (parser.pos < parser.end)
         {
-            FoclObjectRelease(result, context->strPool);
-            return FoclObjectError(context->strPool, "Unexpected characters after expression");
+            FoclObjectRelease(result, context);
+            return FoclObjectError(context->strObjPool, context->strPool, "Unexpected characters after expression");
         }
     }
     return result;
@@ -3546,13 +3717,13 @@ Focl_Object* buildIn_curtime(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 0)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     time_t rawtime;
     struct tm *timeinfo;
     time(&rawtime);
     timeinfo = localtime(&rawtime);
-    Focl_Object* timeObj = createStringFoclObject(FOCL_OBJ_TYPE_STR, context->strPool);
+    Focl_Object* timeObj = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
     FoclStrAssign(timeObj->as.data, asctime(timeinfo));
     return timeObj;
 }
@@ -3562,18 +3733,18 @@ Focl_Object* buildIn_break(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount != 0)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     for (size_t i = 0; i < argCount; i++)
     {
-        FoclObjectRelease(FoclObjVecAt(objVec, i), context->strPool);
+        FoclObjectRelease(FoclObjVecAt(objVec, i), context);
     }
     FoclVectorPoolFree(objVec, context->vecPool);
     if (context->hasBreakBuf)
     {
         longjmp(context->breakBuf, 1);
     }
-    return FoclObjectError(context->strPool, "break outside loop");
+    return FoclObjectError(context->strObjPool, context->strPool, "break outside loop");
 }
 Focl_Object* buildIn_continue(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -3581,18 +3752,18 @@ Focl_Object* buildIn_continue(Focl_Context* context, Focl_Vector* objVec, Focl_C
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount != 0)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     for (size_t i = 0; i < argCount; i++)
     {
-        FoclObjectRelease(FoclObjVecAt(objVec, i), context->strPool);
+        FoclObjectRelease(FoclObjVecAt(objVec, i), context);
     }
     FoclVectorPoolFree(objVec, context->vecPool);
     if (context->hasContinueBuf)
     {
         longjmp(context->continueBuf, 1);
     }
-    return FoclObjectError(context->strPool, "continue outside loop");
+    return FoclObjectError(context->strObjPool, context->strPool, "continue outside loop");
 }
 Focl_Object* buildIn_exit(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -3604,23 +3775,20 @@ Focl_Object* buildIn_exit(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     }
     else if (argCount == 1)
     {
-        Focl_Object* obj = FoclObjVecAt(objVec, 0);
-        if (obj->type != FOCL_OBJ_TYPE_INT)
-        {
-            return FoclObjectError(context->strPool, "exit code must be an integer");
-        }
+        Focl_Object* obj;
+        FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 0, obj, context->strObjPool, context->strPool);
         context->exitCode = FoclObjectUnboxInt(obj);
     }
     else
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
 
     if (context->hasExitBuf)
     {
         longjmp(context->exitBuf, 1);
     }
-    return FoclObjectError(context->strPool, "exit outside repl");
+    return FoclObjectError(context->strObjPool, context->strPool, "exit outside repl");
 }
 
 Focl_Object* buildIn_tostring(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
@@ -3630,7 +3798,7 @@ Focl_Object* buildIn_tostring(Focl_Context* context, Focl_Vector* objVec, Focl_C
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_Object* obj = FoclObjVecAt(objVec, 0);
     if (!isFoclObjectUseString(obj))
@@ -3669,10 +3837,10 @@ Focl_Object* buildIn_asstring(Focl_Context* context, Focl_Vector* objVec, Focl_C
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_Object* originalObj = FoclObjVecAt(objVec, 0);
-    Focl_Object* obj = createFoclObjectAssign(context->strPool, originalObj);
+    Focl_Object* obj = FoclObjPoolAllocAssign(context, originalObj);
     if (!isFoclObjectUseString(obj))
     {
         char intToStrBuffer[FOCL_INT_TO_STR_TMP_BUFFER_SIZE];
@@ -3706,30 +3874,30 @@ Focl_Object* buildIn_upvar(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 2)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_StringView outerName = FoclObjVecAtAsStringToView(objVec, 0);
     Focl_StringView localName = FoclObjVecAtAsStringToView(objVec, 1);
     Focl_Object* outerVar = FindObjectInEnvironment(context->curEnv->parent, &outerName);
     if (outerVar == FOCL_OBJECT_ERROR)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
     }
     FoclObjectRetain(outerVar);
-    LinkObjectWithName_View(context->curEnv->objTable, context->strPool, outerVar, &localName);
-    return FoclObjectVoid(context->strPool);
+    LinkObjectWithName_View(context, outerVar, &localName);
+    return FoclObjectVoid(context->strObjPool, context->strPool);
 }
 Focl_Object* buildIn_proc(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 3)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_StringView procName = FoclObjVecAtAsStringToView(objVec, 0);
     if (FindCommandInContext(context, &procName) != FOCL_COMMAND_ERROR)
     {
-        return FoclObjectError(context->strPool, "repeated command name");
+        return FoclObjectError(context->strObjPool, context->strPool, "repeated command name");
     }
     Focl_StringView argList = FoclObjVecAtAsStringToView(objVec, 1);
     Focl_StringView execBlock = FoclObjVecAtAsStringToView(objVec, 2);
@@ -3738,21 +3906,21 @@ Focl_Object* buildIn_proc(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     Focl_Command* _cmd = createFoclCommand(context->strPool, &argList, &execBlock);
     Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
     FoclHashTableInsert(context->curEnv->cmdTable, _name, _cmd, StrKeyCompare, &keyOpDt, NULL);
-    return FoclObjectVoid(context->strPool);
+    return FoclObjectVoid(context->strObjPool, context->strPool);
 }
 Focl_Object* buildIn_return(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (!context->hasReturnBuf)
     {
-        return FoclObjectError(context->strPool, "cannot return outside proc");
+        return FoclObjectError(context->strObjPool, context->strPool, "cannot return outside proc");
     }
 
     Focl_Object* retObj;
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount == 0)
     {
-        retObj = FoclObjectVoid(context->strPool);
+        retObj = FoclObjectVoid(context->strObjPool, context->strPool);
     }
     else if (argCount == 1)
     {
@@ -3760,7 +3928,7 @@ Focl_Object* buildIn_return(Focl_Context* context, Focl_Vector* objVec, Focl_Com
     }
     else
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
 
     FoclObjectRetain(retObj);
@@ -3768,7 +3936,7 @@ Focl_Object* buildIn_return(Focl_Context* context, Focl_Vector* objVec, Focl_Com
 
     for (size_t i = 0; i < argCount; i++)
     {
-        FoclObjectRelease(FoclObjVecAt(objVec, i), context->strPool);
+        FoclObjectRelease(FoclObjVecAt(objVec, i), context);
     }
     FoclVectorPoolFree(objVec, context->vecPool);
     longjmp(context->returnBuf, 1);
@@ -3777,21 +3945,21 @@ Focl_Object* buildIn_isBuildIn(Focl_Context* context, Focl_Vector* objVec, Focl_
 {
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_StringView cmdName = FoclObjVecAtAsStringToView(objVec, 0);
     Focl_Command* cmd_ = FindCommandInContext(context, &cmdName);
     if (cmd_ == FOCL_COMMAND_ERROR)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
     }
     if (cmd_->func != Focl_evalProc)
     {
-        return FoclObjectBool(FOCL_OBJ_TRUE);
+        return FoclObjectBool(context->strObjPool, FOCL_OBJ_TRUE);
     }
     else
     {
-        return FoclObjectBool(FOCL_OBJ_FALSE);
+        return FoclObjectBool(context->strObjPool, FOCL_OBJ_FALSE);
     }
 }
 Focl_Object* buildIn_srand(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
@@ -3800,7 +3968,7 @@ Focl_Object* buildIn_srand(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount > 1)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
 
     if (argCount == 0)
@@ -3809,14 +3977,11 @@ Focl_Object* buildIn_srand(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     }
     else
     {
-        Focl_Object* seed = FoclObjVecAt(objVec, 0);
-        if (seed->type != FOCL_OBJ_TYPE_INT)
-        {
-            return FoclObjectError(context->strPool, FOCL_ERR_INVALID_ARG);
-        }
-        srand((unsigned int)FoclObjVecAt(objVec, 0)->as.i);
+        Focl_Object* seed;
+        FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 0, seed, context->strObjPool, context->strPool);
+        srand((unsigned int)FoclObjectUnboxInt(seed));
     }
-    return FoclObjectVoid(context->strPool);
+    return FoclObjectVoid(context->strObjPool, context->strPool);
 }
 Focl_Object* buildIn_randi(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -3824,26 +3989,20 @@ Focl_Object* buildIn_randi(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount != 2)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    Focl_Object* min = FoclObjVecAt(objVec, 0);
-    if (min->type != FOCL_OBJ_TYPE_INT)
-    {
-        return FoclObjectError(context->strPool, FOCL_ERR_INVALID_ARG);
-    }
-    Focl_Object* max = FoclObjVecAt(objVec, 1);
-    if (max->type != FOCL_OBJ_TYPE_INT)
-    {
-        return FoclObjectError(context->strPool, FOCL_ERR_INVALID_ARG);
-    }
-    Focl_Obj_Int maxI = max->as.i;
-    Focl_Obj_Int minI = min->as.i;
+    Focl_Object* min;
+    Focl_Object* max;
+    FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 0, min, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 1, max, context->strObjPool, context->strPool);
+    Focl_Obj_Int minI = FoclObjectUnboxInt(min);
+    Focl_Obj_Int maxI = FoclObjectUnboxInt(max);
     if (maxI < minI)
     {
-        return FoclObjectError(context->strPool, "the max should not small that min");
+        return FoclObjectError(context->strObjPool, context->strPool, "the max should not small that min");
     }
-    Focl_Object* randomNumObj = createFoclObject(FOCL_OBJ_TYPE_INT);
-    randomNumObj->as.i = rand() % (maxI - minI + 1) + minI;
+    Focl_Object* randomNumObj = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+    FoclObjectBoxInt(randomNumObj, rand() % (maxI - minI + 1) + minI);
     return randomNumObj;
 }
 Focl_Object* buildIn_randf(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
@@ -3852,27 +4011,158 @@ Focl_Object* buildIn_randf(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount != 2)
     {
-        return FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    Focl_Object* min = FoclObjVecAt(objVec, 0);
-    if (min->type != FOCL_OBJ_TYPE_FLOAT)
-    {
-        return FoclObjectError(context->strPool, FOCL_ERR_INVALID_ARG);
-    }
-    Focl_Object* max = FoclObjVecAt(objVec, 1);
-    if (max->type != FOCL_OBJ_TYPE_FLOAT)
-    {
-        return FoclObjectError(context->strPool, FOCL_ERR_INVALID_ARG);
-    }
-    Focl_Obj_Float maxF = max->as.f;
-    Focl_Obj_Float minF = min->as.f;
+    Focl_Object* min;
+    Focl_Object* max;
+    FOCL_OBJ_VEC_AT_AS_FLOAT_OBJ(objVec, 0, min, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_FLOAT_OBJ(objVec, 1, max, context->strObjPool, context->strPool);
+    Focl_Obj_Float minF = FoclObjectUnboxFloat(min);
+    Focl_Obj_Float maxF = FoclObjectUnboxFloat(max);
     if (maxF < minF)
     {
-        return FoclObjectError(context->strPool, "the max should not small that min");
+        return FoclObjectError(context->strObjPool, context->strPool, "the max should not small that min");
     }
-    Focl_Object* randomNumObj = createFoclObject(FOCL_OBJ_TYPE_FLOAT);
-    randomNumObj->as.f = minF + (rand() / (RAND_MAX + 1.0)) * (maxF - minF);
+    Focl_Object* randomNumObj = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+    FoclObjectBoxFloat(randomNumObj, minF + (rand() / (RAND_MAX + 1.0)) * (maxF - minF));
     return randomNumObj;
+}
+Focl_Object* buildIn_string(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    size_t argCount = FoclVectorGetSize(objVec);
+    if (argCount < 2)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* childCmdObj;
+    Focl_Object* targetObj;
+    Focl_Object* retValue;
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, childCmdObj, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 1, targetObj, context->strObjPool, context->strPool);
+    if (FoclStrComp(FoclObjectGetString(childCmdObj), "length") == 0)
+    {
+        if (argCount != 2)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+        FoclObjectBoxInt(retValue, FoclStrCharCount(FoclObjectGetString(targetObj)));
+    }
+    else if (FoclStrComp(FoclObjectGetString(childCmdObj), "index") == 0)
+    {
+        if (argCount != 3)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        Focl_Object* idxObj;
+        FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 2, idxObj, context->strObjPool, context->strPool);
+        Focl_Obj_Int idx = FoclObjectUnboxInt(idxObj);
+        size_t len = FoclStrCharCount(FoclObjectGetString(targetObj));
+        if (idx >= len)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, "index out of length");
+        }
+        retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
+        char tmpBuffer[5] = {0};
+        char* start = targetObj->as.data->data;
+        size_t searchStartIdx = 0;
+        int32_t tmpChar = FoclStrAt(idx, &start, &searchStartIdx);
+        memcpy(tmpBuffer, &tmpChar, sizeof(int32_t));
+        FoclStrAssign(FoclObjectGetString(retValue), tmpBuffer);
+    }
+    else if (FoclStrComp(FoclObjectGetString(childCmdObj), "range") == 0)
+    {
+        if (argCount != 4)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        Focl_Object* beginObj;
+        Focl_Object* endObj;
+        FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 2, beginObj, context->strObjPool, context->strPool);
+        FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 3, endObj, context->strObjPool, context->strPool);
+        Focl_Obj_Int beginIdx = FoclObjectUnboxInt(beginObj);
+        Focl_Obj_Int endIdx = FoclObjectUnboxInt(endObj);
+        size_t totalChars = FoclStrCharCount(FoclObjectGetString(targetObj));
+        if (beginIdx < 0 || endIdx < 0 || beginIdx >= (Focl_Obj_Int)totalChars || endIdx >= (Focl_Obj_Int)totalChars)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, "index out of range");
+        }
+        if (beginIdx > endIdx)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, "begin must not be greater than end");
+        }
+        size_t charIdx = 0;
+        char* startPtr = FoclObjectGetString(targetObj)->data;
+        while (charIdx < beginIdx)
+        {
+            startPtr += getUtf8CodePointLength((uint8_t)*startPtr);
+            charIdx++;
+        }
+        char* endPtr = startPtr;
+        while (charIdx <= endIdx)
+        {
+            endPtr += getUtf8CodePointLength((uint8_t)*endPtr);
+            charIdx++;
+        }
+        ptrdiff_t byteLen = endPtr - startPtr;
+        char* tmpBuf = (char*)malloc(byteLen + 1);
+        memcpy(tmpBuf, startPtr, byteLen);
+        tmpBuf[byteLen] = '\0';
+        retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
+        FoclStrAssign(FoclObjectGetString(retValue), tmpBuf);
+        free(tmpBuf);
+    }
+    else if (FoclStrComp(FoclObjectGetString(childCmdObj), "compare") == 0)
+    {
+        if (argCount != 3)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        Focl_Object* srcObj;
+        FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 2, srcObj, context->strObjPool, context->strPool);
+        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+        FoclObjectBoxInt(retValue, (Focl_Obj_Int)FoclStrCompStr(FoclObjectGetString(targetObj), FoclObjectGetString(srcObj)));
+    }
+    else if (FoclStrComp(FoclObjectGetString(childCmdObj), "equal") == 0)
+    {
+        if (argCount != 3)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        Focl_Object* srcObj;
+        FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 2, srcObj, context->strObjPool, context->strPool);
+        if (FoclStrCompStr(FoclObjectGetString(targetObj), FoclObjectGetString(srcObj)) == 0)
+        {
+            retValue = FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_TRUE);
+        }
+        else
+        {
+            retValue = FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_FALSE);
+        }
+    }
+    else
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
+    }
+    return retValue;
+}
+Focl_Object* buildIn_append(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    Focl_Object* srcObj;
+    Focl_StringView dstName = FoclObjVecAtAsStringToView(objVec, 0);
+    Focl_Object* dst = FindObjectInContext(context, &dstName);
+    if (dst == FOCL_OBJECT_ERROR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+    }
+    if (dst->type != FOCL_OBJ_TYPE_STR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+    }
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 1, srcObj, context->strObjPool, context->strPool);
+    FoclStrAppendStr(FoclObjectGetString(dst), FoclObjectGetString(srcObj));
+    FoclObjectRetain(dst);
+    return dst;
 }
 Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -3890,17 +4180,17 @@ Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
             Focl_StringView arg = getNextWord(&remaining);
             if (arg.strPtr == NULL || arg.len == 0)
             {
-                retValue = FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+                retValue = FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
                 goto exitChildEnv;
             }
             Focl_Object* originObj = FoclObjVecAt(objVec, i);
-            Focl_Object* newObj = createFoclObjectAssign(context->strPool, originObj);
-            LinkObjectWithName_View(context->curEnv->objTable, context->strPool, newObj, &arg);
+            Focl_Object* newObj = FoclObjPoolAllocAssign(context, originObj);
+            LinkObjectWithName_View(context, newObj, &arg);
         }
         Focl_StringView leftover = getNextWord(&remaining);
         if (leftover.strPtr != NULL && leftover.len != 0)
         {
-            retValue = FoclObjectError(context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+            retValue = FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
             goto exitChildEnv;
         }
     }
@@ -3959,6 +4249,8 @@ void Focl_RegisterBuiltinCommands(Focl_Context* context)
     FoclRegisterCommand(context, "srand", buildIn_srand);
     FoclRegisterCommand(context, "randi", buildIn_randi);
     FoclRegisterCommand(context, "randf", buildIn_randf);
+    FoclRegisterCommand(context, "string", buildIn_string);
+    FoclRegisterCommand(context, "append", buildIn_append);
 }
 
 /* BUILTIN COMMAND */
@@ -4103,7 +4395,7 @@ int Focl_REPL(Focl_Context* ctx)
             printf("\n");
         }
 
-        FoclObjectRelease(result, ctx->strPool);
+        FoclObjectRelease(result, ctx);
         FoclStrClear(&buffer);
         depth = 0;
     }
@@ -4152,10 +4444,10 @@ int Focl_ExecFile(Focl_Context* ctx, const char* filename)
         if (result->type == FOCL_OBJ_TYPE_ERROR)
         {
             printf("Error: %s\n", FoclStrCStr(result->as.data));
-            FoclObjectRelease(result, ctx->strPool);
+            FoclObjectRelease(result, ctx);
             break;
         }
-        FoclObjectRelease(result, ctx->strPool);
+        FoclObjectRelease(result, ctx);
         FoclStrClear(&buffer);
         depth = 0;
     }
@@ -4167,7 +4459,7 @@ int Focl_ExecFile(Focl_Context* ctx, const char* filename)
         {
             printf("Error: %s\n", FoclStrCStr(result->as.data));
         }
-        FoclObjectRelease(result, ctx->strPool);
+        FoclObjectRelease(result, ctx);
     }
 
     ctx->hasExitBuf = false;

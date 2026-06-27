@@ -1,16 +1,17 @@
 #ifndef FOCL_DEV_H
 #define FOCL_DEV_H
 
-/* 
- * The aim of the file is to create a interface for outer program who wants
- * to embed Focl. The focl runtime don't lean on it
- */
-
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <setjmp.h>
 #include <stdbool.h>
+
+/* 
+ * The aim of the file is to create a interface for outer program who wants
+ * to embed Focl. The focl runtime don't lean on it
+ */
 
 #if SIZE_MAX == 0xFFFFFFFFFFFFFFFF
     typedef uint32_t Focl_Obj_Type;
@@ -22,6 +23,14 @@
     #define FOCL_FORMAT_FLOAT "lf"
     #define FOCL_INT_TO_STR_TMP_BUFFER_SIZE 24
     #define FOCL_FLOAT_TO_STR_TMP_BUFFER_SIZE 32
+    Focl_Obj_Int Focl_StrToInt(const char* str)
+    {
+        return strtoll(str, NULL, 0);
+    }
+    Focl_Obj_Float Focl_StrToFloat(const char* str)
+    {
+        return strtod(str, NULL);
+    }
 #elif SIZE_MAX == 0xFFFFFFFF
     typedef uint16_t Focl_Obj_Type;
     typedef uint16_t Focl_Obj_RefCount;
@@ -32,12 +41,17 @@
     #define FOCL_FORMAT_FLOAT "f"
     #define FOCL_INT_TO_STR_TMP_BUFFER_SIZE 12
     #define FOCL_FLOAT_TO_STR_TMP_BUFFER_SIZE 32
+    Focl_Obj_Int Focl_StrToInt(const char* str)
+    {
+        return strtol(str, NULL, 0);
+    }
+    Focl_Obj_Float Focl_StrToFloat(const char* str)
+    {
+        return strtod(str, NULL);
+    }
 #else
     #error "Unsupported word length platform. Though I want to see this program run in every platform. But now it couldn't run yours. Sorry. :("
 #endif
-
-Focl_Obj_Int Focl_StrToInt(const char* str);
-Focl_Obj_Float Focl_StrToFloat(const char* str);
 
 typedef Focl_Obj_Int Focl_Obj_Bool;
 #define FOCL_OBJ_TRUE 1
@@ -119,6 +133,15 @@ typedef Focl_Pool Focl_StringPool;
 
 typedef Focl_Pool Focl_VectorPool;
 
+#define FOCL_OBJ_POOL_ITEM_PER_BLOCK 16
+#define FOCL_OBJ_POOL_BLOCK_COUNT_INIT 2
+
+#define FOCL_OBJ_POOL_WITH_NO_STR_DEFAULT_TYPE FOCL_OBJ_TYPE_INT
+#define FOCL_OBJ_POOL_WITH_STR_DEFAULT_TYPE FOCL_OBJ_TYPE_STR
+
+typedef Focl_Pool Focl_ObjWithNoStrPool;
+typedef Focl_Pool Focl_StrObjPool;
+
 typedef struct Focl_Object
 {
     Focl_Obj_RefCount refCount;
@@ -183,6 +206,8 @@ typedef struct Focl_Context
     Focl_StringPool* strPool;
     Focl_VectorPool* vecPool;
     Focl_Object* returnValue;
+    Focl_ObjWithNoStrPool* objWithNoStrPool;
+    Focl_StrObjPool* strObjPool;
     jmp_buf breakBuf;
     jmp_buf continueBuf;
     jmp_buf exitBuf;
@@ -201,6 +226,9 @@ typedef struct Focl_ExprParser
     const char* end;
 }Focl_ExprParser;
 
+void FoclObjectRetain(Focl_Object* obj);
+void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);
+
 #define FOCL_OBJECT_ERROR NULL
 
 #define FOCL_OBJ_TYPE_INT 0
@@ -210,8 +238,7 @@ typedef struct Focl_ExprParser
 #define FOCL_OBJ_TYPE_ERROR 4
 #define FOCL_OBJ_TYPE_BYTECODE 5
 #define FOCL_OBJ_TYPE_STR 6
-#define FOCL_OBJ_TYPE_BLOCK 7
-#define FOCL_OBJ_TYPE_COMPLEX 8
+#define FOCL_OBJ_TYPE_COMPLEX 7
 
 #define FOCL_ERR_INVALID_ARG "Invalid argument"
 #define FOCL_ERR_UNSUPPORTED_ARG_COUNT "Unsupported argument counts"
@@ -221,18 +248,19 @@ typedef struct Focl_ExprParser
 #define FOCL_ERR_UNKNOWN_COMMAND "Unknown command"
 #define FOCL_ERR_WRONG_TYPE_ASSIGNMENT "Wrong type in assignment"
 #define _FOCL_STR_HELPER(x) #x
-#define FOCL_ERR_YSNBH "You should not be here! Line:" _FOCL_STR_HELPER(__LINE__)
+#define _FOCL_MACRO_AS_STR(x) _FOCL_STR_HELPER(x)
+#define FOCL_ERR_YSNBH "You should not be here! Line: " _FOCL_MACRO_AS_STR(__LINE__)
 
-Focl_Object* FoclObjectError(Focl_StringPool* strPool, const char* errmsg);
+Focl_Object* FoclObjectError(Focl_StrObjPool* objPool, Focl_StringPool* strPool, const char* errmsg);
 size_t FoclVectorGetSize(Focl_Vector* vec);
 
 Focl_Object* FoclObjVecAt(Focl_Vector* objVec, size_t idx);
 Focl_String* FoclObjVecAtAsString(Focl_Vector* objVec, size_t idx);
 Focl_StringView FoclObjVecAtAsStringToView(Focl_Vector* objVec, size_t idx);
 char* FoclStrCStr(const Focl_String* str);
-Focl_Object* FoclObjectVoid(Focl_StringPool* strPool);
-Focl_Object* createFoclObject(Focl_Obj_Type type_);
-Focl_Object* createStringFoclObject(Focl_Obj_Type type_, Focl_StringPool* strPool);
-Focl_Object* FoclObjectBool(Focl_Obj_Bool booleanValue);
+Focl_Object* FoclObjectVoid(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool);
+Focl_Object* FoclObjWithNoStringPoolAlloc(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Type type_);
+Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* objPool, Focl_StringPool* strPool, Focl_Obj_Type type_);
+Focl_Object* FoclObjectBool(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Bool booleanValue);
 
 #endif
