@@ -23,14 +23,8 @@
     #define FOCL_FORMAT_FLOAT "lf"
     #define FOCL_INT_TO_STR_TMP_BUFFER_SIZE 24
     #define FOCL_FLOAT_TO_STR_TMP_BUFFER_SIZE 32
-    Focl_Obj_Int Focl_StrToInt(const char* str)
-    {
-        return strtoll(str, NULL, 0);
-    }
-    Focl_Obj_Float Focl_StrToFloat(const char* str)
-    {
-        return strtod(str, NULL);
-    }
+    Focl_Obj_Int Focl_StrToInt(const char* str);
+    Focl_Obj_Float Focl_StrToFloat(const char* str);
 #elif SIZE_MAX == 0xFFFFFFFF
     typedef uint16_t Focl_Obj_Type;
     typedef uint16_t Focl_Obj_RefCount;
@@ -41,14 +35,8 @@
     #define FOCL_FORMAT_FLOAT "f"
     #define FOCL_INT_TO_STR_TMP_BUFFER_SIZE 12
     #define FOCL_FLOAT_TO_STR_TMP_BUFFER_SIZE 32
-    Focl_Obj_Int Focl_StrToInt(const char* str)
-    {
-        return strtol(str, NULL, 0);
-    }
-    Focl_Obj_Float Focl_StrToFloat(const char* str)
-    {
-        return strtod(str, NULL);
-    }
+    Focl_Obj_Int Focl_StrToInt(const char* str);
+    Focl_Obj_Float Focl_StrToFloat(const char* str);
 #else
     #error "Unsupported word length platform. Though I want to see this program run in every platform. But now it couldn't run yours. Sorry. :("
 #endif
@@ -262,5 +250,16 @@ Focl_Object* FoclObjectVoid(Focl_StrObjPool* strObjPool, Focl_StringPool* strPoo
 Focl_Object* FoclObjWithNoStringPoolAlloc(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Type type_);
 Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* objPool, Focl_StringPool* strPool, Focl_Obj_Type type_);
 Focl_Object* FoclObjectBool(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Bool booleanValue);
+
+#define FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, dsttype, strObjPool, strPool) \
+    obj = FoclObjVecAt(objVec, idx); \
+    if (obj->type != dsttype) \
+    { \
+        return FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG);\
+    } \
+
+#define FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_INT, strObjPool, strPool)
+#define FOCL_OBJ_VEC_AT_AS_FLOAT_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_FLOAT, strObjPool, strPool)
+#define FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_STR, strObjPool, strPool)
 
 #endif
