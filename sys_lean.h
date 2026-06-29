@@ -4,6 +4,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#ifndef PATH_MAX
+
+#define PATH_MAX 4096
+/* it's a temp method, I know. */
+
+#endif
+
 #ifdef _WIN32
 int access(const char* filename, int accessMode);
 #endif

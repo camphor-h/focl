@@ -32,6 +32,13 @@ bool Focl_isFileExist(const char* filename)
     return (access(filename, F_OK) == 0 ? true : false);
 }
 
+#ifndef PATH_MAX
+
+#define PATH_MAX 4096
+/* it's a temp method, I know. */
+
+#endif
+
 bool Focl_isDir(const char* path)
 {
 #ifdef _WIN32
