@@ -578,18 +578,21 @@ Focl_Object* buildIn_asstring(Focl_Context* context, Focl_Vector* objVec, Focl_C
         switch (obj->type)
         {
             case FOCL_OBJ_TYPE_INT:
+                ; /* label followed by a declaration is a C23 extension. */
                 Focl_Obj_Int i = FoclObjectUnboxInt(obj);
                 obj->as.data = FoclStringPoolAlloc(context->strPool);
                 sprintf(intToStrBuffer, "%"FOCL_FORMAT_INT, i);
                 FoclStrAssign(obj->as.data, intToStrBuffer);
                 break;
             case FOCL_OBJ_TYPE_FLOAT:
+                ; /* label followed by a declaration is a C23 extension. */
                 Focl_Obj_Float f = FoclObjectUnboxFloat(obj);
                 obj->as.data = FoclStringPoolAlloc(context->strPool);
                 sprintf(floatToStrBuffer, "%"FOCL_FORMAT_FLOAT, f);
                 FoclStrAssign(obj->as.data, floatToStrBuffer);
                 break;
             case FOCL_OBJ_TYPE_BOOL:
+                ; /* label followed by a declaration is a C23 extension. */
                 Focl_Obj_Bool b = obj->as.i;
                 obj->as.data = FoclStringPoolAlloc(context->strPool);
                 FoclStrAssign(obj->as.data, (b == FOCL_OBJ_TRUE) ? "true" : "false");
