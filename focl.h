@@ -1,6 +1,8 @@
 #ifndef FOCL_H
 #define FOCL_H
 
+#include <stdio.h>
+
 /* 
  * The aim of the file is to create a interface for outer program who wants
  * to embed Focl. The focl runtime don't lean on it
@@ -12,7 +14,7 @@ typedef struct Focl_Context Focl_Context;
 typedef struct Focl_Command Focl_Command;
 typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
 
-Focl_Context* createFoclContext();
+Focl_Context* createFoclContext(FILE* outpotfPtr);
 void freeFoclContext(Focl_Context* context);
 int Focl_REPL(Focl_Context* ctx);
 int Focl_ExecFile(Focl_Context* ctx, const char* filename);
