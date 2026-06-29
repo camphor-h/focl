@@ -1,6 +1,10 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <stdbool.h>
 #include <limits.h>
+#include <stddef.h>
+#include <errno.h>
 
 #ifdef _WIN32
 #include <dirent.h>
@@ -10,6 +14,8 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/fcntl.h>
+#include <libgen.h>
 #endif
 
 char* Focl_strdup(const char* src);
@@ -118,6 +124,7 @@ char* Focl_realpath(const char* path, char* resolvedPath, size_t bufferSize)
 #ifdef _WIN32
     return _fullpath(resolvedPath, path, bufferSize);
 #else
+    (void)bufferSize;
     return realpath(path, resolvedPath);
 #endif
 }
@@ -159,31 +166,36 @@ char* Focl_dirname(const char* path) /* free the return value! */
 #endif
 }
 
+#define FOCL_FILECOPY_BUFFER_SIZE 4096
+
 int Focl_fileCopy(const char* src, const char* dst)
 {
-#ifdef _WIN32
-    if (CopyFile(src, dst, FALSE))
-    {
-        return 0;
-    }
-    return -1;
-#else
-    int fdin = open(src, O_RDONLY);
-    if (fdin < 0)
+    FILE *fsrc = fopen(src, "rb");
+    if (!fsrc)
     {
         return -1;
     }
-    int fdout = open(dst, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fdout < 0)
+    FILE *fdst = fopen(dst, "wb");
+    if (!fdst)
     {
-        close(fdin);
+        fclose(fsrc);
         return -1;
     }
-    struct stat st;
-    fstat(fdin, &st);
-    ssize_t result = sendfile(fdout, fdin, NULL, st.st_size);
-    close(fdin);
-    close(fdout);
-    return (result == st.st_size) ? 0 : -1;
-#endif
+    
+    char buffer[FOCL_FILECOPY_BUFFER_SIZE];
+    size_t n;
+    while ((n = fread(buffer, 1, sizeof(buffer), fsrc)) > 0)
+    {
+        if (fwrite(buffer, 1, n, fdst) != n)
+        {
+            fclose(fsrc);
+            fclose(fdst);
+            remove(dst);
+            return -1;
+        }
+    }
+    int result = ferror(fsrc) ? -1 : 0;
+    fclose(fsrc);
+    fclose(fdst);
+    return result;
 }

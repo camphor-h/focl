@@ -203,19 +203,6 @@ typedef Focl_HashTable Focl_ObjTable;
 
 typedef Focl_HashTable Focl_CommandTable;
 
-typedef struct Focl_Context Focl_Context;
-
-typedef struct Focl_Command
-{
-    Focl_Object* (*func)(Focl_Context* context, Focl_Vector* objVec, struct Focl_Command* cmd);
-    Focl_String* proc; /* NULL if build-in */
-    Focl_String* args; /* NULL if build-in */
-}Focl_Command;
-
-Focl_Command* createFoclCommand(Focl_StringPool* strPool, Focl_StringView* argsView, Focl_StringView* procView);
-
-typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
-
 typedef struct Focl_Environment
 {
     size_t level;
@@ -261,6 +248,17 @@ typedef struct Focl_ExprParser
     const char* pos;
     const char* end;
 }Focl_ExprParser;
+
+typedef struct Focl_Command
+{
+    Focl_Object* (*func)(Focl_Context* context, Focl_Vector* objVec, struct Focl_Command* cmd);
+    Focl_String* proc; /* NULL if build-in */
+    Focl_String* args; /* NULL if build-in */
+}Focl_Command;
+
+Focl_Command* createFoclCommand(Focl_StringPool* strPool, Focl_StringView* argsView, Focl_StringView* procView);
+
+typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
 
 #define FOCL_OBJECT_ERROR NULL
 #define FOCL_COMMAND_ERROR NULL
