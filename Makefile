@@ -1,5 +1,5 @@
 CC = cc
-CFLAGS = -std=c99 -Wall -Wextra
+CFLAGS = -Wall -Wextra
 SRC = focl_main.c focl_utils.c sys_lean.c focl.c
 TARGET = focl
 
