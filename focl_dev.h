@@ -323,7 +323,7 @@ Focl_Object* FoclObjectVoid(Focl_StrObjPool* strObjPool, Focl_StringPool* strPoo
 Focl_Object* FoclObjectBool(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Bool booleanValue);
 void FoclObjectRetain(Focl_Object* obj);
 void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);
-Focl_Object* Focl_FindObject(Focl_Context* context, const Focl_String* target);
+Focl_Object* Focl_FindObject(Focl_Environment* env, Focl_StringPool* strPool, const Focl_String* target);
 Focl_Object* FoclObjVecAt(Focl_Vector* objVec, size_t idx);
 Focl_String* FoclObjVecAtAsString(Focl_Vector* objVec, size_t idx);
 Focl_StringView FoclObjVecAtAsStringToView(Focl_Vector* objVec, size_t idx);
