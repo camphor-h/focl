@@ -69,10 +69,6 @@ bool Focl_isNormalFile(const char* path)
     {
         return false;
     }
-    else if (attrs & FILE_ATTRIBUTE_NORMAL)
-    {
-        return false;
-    }
     else if (attrs & FILE_ATTRIBUTE_REPARSE_POINT)
     {
         return false;
