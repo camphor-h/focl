@@ -75,9 +75,10 @@ typedef struct Focl_String
 
 int32_t FoclStrAt(size_t idx, char** start, size_t* hadSearchIdx);
 int FoclStrComp(const Focl_String* str, const char* cStr);
-void FoclStrAppendStr(Focl_String* dst, Focl_String* src);
+void FoclStrAppendStr(Focl_String* dst, const Focl_String* src);
 int FoclStrCompStr(const Focl_String* str1, const Focl_String* str2);
 void FoclStrAssign(Focl_String* str, const char* cStr);
+void FoclStrAssignStr(Focl_String* dst, const Focl_String* src);
 
 bool StrKeyCompare(void* a, void* b);
 
@@ -132,11 +133,16 @@ typedef struct Focl_Pool
 typedef Focl_Pool Focl_StringPool;
 
 Focl_String* FoclStringPoolAlloc(Focl_StringPool* strPool); /* It will alloc string and clear it. */
+void FoclStringPoolFree(Focl_String* str, Focl_StringPool* strPool);
 
 #define FOCL_VECTOR_POOL_ITEM_PER_BLOCK 8
 #define FOCL_VECTOR_POOL_BLOCK_COUNT_INIT 2
 
-typedef Focl_Pool Focl_VectorPool;
+typedef struct Focl_VectorPool
+{
+    size_t elementLen;
+    Focl_Pool* pool;
+}Focl_VectorPool;
 
 #define FOCL_OBJ_POOL_ITEM_PER_BLOCK 16
 #define FOCL_OBJ_POOL_BLOCK_COUNT_INIT 2
@@ -209,6 +215,8 @@ typedef struct Focl_Environment
     Focl_ObjTable* objTable;
     Focl_CommandTable* cmdTable;
     struct Focl_Environment* parent; /* if the level is 0, it will be NULL. */
+    Focl_String* envNamespace; /* :: if root env. */
+    Focl_Vector* namespaceVec; /* imported namespace vector */
 }Focl_Environment;
 
 #define FOCL_IOBUFFER_DEFAULT_SIZE 2048
@@ -226,11 +234,12 @@ typedef struct Focl_Context
     Focl_Environment* globalEnv;
     Focl_Environment* curEnv;
     Focl_StringPool* strPool;
-    Focl_VectorPool* vecPool;
+    Focl_VectorPool* objVecPool;
+    Focl_VectorPool* strVecPool;
     Focl_Object* returnValue;
     Focl_ObjWithNoStrPool* objWithNoStrPool;
     Focl_StrObjPool* strObjPool;
-    Focl_IOBuffer* outBuffer; /* Currently only have output buffer. */
+    Focl_IOBuffer* outBuffer; /* currently only have output buffer */
     jmp_buf breakBuf;
     jmp_buf continueBuf;
     jmp_buf exitBuf;
@@ -252,11 +261,12 @@ typedef struct Focl_ExprParser
 typedef struct Focl_Command
 {
     Focl_Object* (*func)(Focl_Context* context, Focl_Vector* objVec, struct Focl_Command* cmd);
+    Focl_String* name;
     Focl_String* proc; /* NULL if build-in */
     Focl_String* args; /* NULL if build-in */
 }Focl_Command;
 
-Focl_Command* createFoclCommand(Focl_StringPool* strPool, Focl_StringView* argsView, Focl_StringView* procView);
+Focl_Command* createFoclCommand(Focl_StringPool* strPool, Focl_String* cmdName, Focl_StringView* argsView, Focl_StringView* procView);
 
 typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
 
@@ -290,14 +300,14 @@ typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* obj
 
 void FoclVectorPoolFree(Focl_Vector* vec, Focl_VectorPool* vecPool);
 
-void LinkObjectWithName_View(Focl_Context* context, Focl_Object* obj, const Focl_StringView* strView);
+void LinkObjectWithName(Focl_Context* context, Focl_Object* obj, const Focl_String* str);
 
 Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView);
 
 Focl_Object* Focl_parseBlock(Focl_Context* context, Focl_StringView* strView);
 Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* strView);
 Focl_Object* Focl_parseLine(Focl_Context* context, Focl_String* lineStr);
-Focl_Command* FindCommandInContext(Focl_Context* context, Focl_StringView* strView);
+Focl_Command* Focl_FindCommand(Focl_Context* context, const Focl_String* target);
 
 Focl_Object* exprParseExpression(Focl_ExprParser* p);
 void exprSkipSpace(Focl_ExprParser* p);
@@ -313,8 +323,7 @@ Focl_Object* FoclObjectVoid(Focl_StrObjPool* strObjPool, Focl_StringPool* strPoo
 Focl_Object* FoclObjectBool(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Bool booleanValue);
 void FoclObjectRetain(Focl_Object* obj);
 void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);
-Focl_Object* FindObjectInEnvironment(Focl_Environment* env, Focl_StringView* strView);
-Focl_Object* FindObjectInContext(Focl_Context* context, Focl_StringView* strView);
+Focl_Object* Focl_FindObject(Focl_Context* context, const Focl_String* target);
 Focl_Object* FoclObjVecAt(Focl_Vector* objVec, size_t idx);
 Focl_String* FoclObjVecAtAsString(Focl_Vector* objVec, size_t idx);
 Focl_StringView FoclObjVecAtAsStringToView(Focl_Vector* objVec, size_t idx);
