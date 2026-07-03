@@ -6,7 +6,7 @@
 
 ## License
 
-This project is licensed under the **MIT License**.
+To prevent the abuse of MIT license (BSD better if you want a super free license!) and also make sure that we could get feedback from the user. Focl use a customed License, check the LICENSE under the directory to understand it.
 
 ---
 

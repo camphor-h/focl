@@ -213,7 +213,7 @@ void FoclStrAppend(Focl_String* str, const char* Cstr)
     str->length += len;
     str->data[str->length] = '\0';
 }
-void FoclStrAppendStr(Focl_String* dst, Focl_String* src)
+void FoclStrAppendStr(Focl_String* dst, const Focl_String* src)
 {
     FoclStrAppend(dst, FoclStrCStr(src));
 }
@@ -1331,29 +1331,33 @@ void FoclStringPoolFreeOpDtVoid(void* str, void* strPool)
 
 /* VECTOR POOL */
 
-Focl_VectorPool* createFoclVectorPool()
+Focl_VectorPool* createFoclVectorPool(size_t lenOfElement)
 {
-    FoclVectorOpCtCtx ctCtx = {.itemSize = sizeof(Focl_Object*), .iCapacity = FOCL_VECTOR_INIT_CAPACITY};
+    Focl_VectorPool* vecPool = malloc(sizeof(Focl_VectorPool));
+    vecPool->elementLen = lenOfElement;
+    FoclVectorOpCtCtx ctCtx = {.itemSize = lenOfElement, .iCapacity = FOCL_VECTOR_INIT_CAPACITY};
     Focl_TypeOpCt opCt = {.func = FoclVectorOpCtVoid, .ctx = &ctCtx};
-    return createFoclPool(sizeof(Focl_Vector), FOCL_VECTOR_POOL_ITEM_PER_BLOCK, FOCL_VECTOR_POOL_BLOCK_COUNT_INIT, &opCt);
+    vecPool->pool = createFoclPool(sizeof(Focl_Vector), FOCL_VECTOR_POOL_ITEM_PER_BLOCK, FOCL_VECTOR_POOL_BLOCK_COUNT_INIT, &opCt);
+    return vecPool;
 }
 void freeFoclVectorPool(Focl_VectorPool* vecPool)
 {
     Focl_TypeOpDt opDt = {.func = FoclVectorOpDtVoid, .ctx = NULL};
-    freeFoclPool(vecPool, &opDt);
+    freeFoclPool(vecPool->pool, &opDt);
+    free(vecPool);
 }
 Focl_Vector* FoclVectorPoolAlloc(Focl_VectorPool* vecPool)
 {
-    FoclVectorOpCtCtx ctCtx = {.itemSize = sizeof(Focl_Object*), .iCapacity = FOCL_VECTOR_INIT_CAPACITY};
+    FoclVectorOpCtCtx ctCtx = {.itemSize = vecPool->elementLen, .iCapacity = FOCL_VECTOR_INIT_CAPACITY};
     Focl_TypeOpCt opCt = {.func = FoclVectorOpCtVoid, .ctx = &ctCtx};
     Focl_TypeOpCl opCl = {.func = FoclVectorOpClVoid, .ctx = NULL};
-    Focl_Vector* vec = (Focl_Vector*)FoclPoolAllocEx(vecPool, &opCt, &opCl);
+    Focl_Vector* vec = (Focl_Vector*)FoclPoolAllocEx(vecPool->pool, &opCt, &opCl);
     FoclVectorClear(vec);
     return vec;
 }
 void FoclVectorPoolFree(Focl_Vector* vec, Focl_VectorPool* vecPool)
 {
-    FoclPoolFree((void*)vec, vecPool);
+    FoclPoolFree((void*)vec, vecPool->pool);
 } 
 
 /* VECTOR POOL */
@@ -1442,11 +1446,6 @@ Focl_Object* FoclObjectError(Focl_StrObjPool* objPool, Focl_StringPool* strPool,
 }
 Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_StringView* strView)
 {
-    /*
-     * People may concern that why I need to pass both context and strPool arguments.
-     * Well, that's because I just doesn't want to resolve the strPool pointer for 
-     * so many times.
-     */
     Focl_Object* obj;
     Focl_StringPool* strPool = context->strPool;
     Focl_ObjWithNoStrPool* objPool = context->objWithNoStrPool;
@@ -1469,7 +1468,10 @@ Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_Strin
     else if (Focl_isVarSubstition_View(strView))
     {
         Focl_StringView varStrView = {strView->len - 1, strView->strPtr + 1};
-        obj = FindObjectInContext(context, &varStrView);
+        Focl_String tmpStr;
+        char saved = initTempFoclStringWithView(&tmpStr, &varStrView);
+        obj = Focl_FindObject(context, &tmpStr);
+        restoreFoclStringViewFromTempString(&varStrView, saved);
         if (obj == FOCL_OBJECT_ERROR)
         {
             return FoclObjectError(strObjPool, strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
@@ -1652,13 +1654,13 @@ Focl_Object* FindObjectInTable(Focl_ObjTable* objTable, const Focl_String* strVi
 {
     return (Focl_Object*)FoclHashTableFind(objTable, (void*)strView, StrKeyCompare);
 }
-void LinkObjectWithName_View(Focl_Context* context, Focl_Object* obj, const Focl_StringView* strView)
+void LinkObjectWithName(Focl_Context* context, Focl_Object* obj, const Focl_String* str)
 {
-    Focl_String* str = FoclStringPoolAlloc(context->strPool);
-    FoclStrAssignView(str, strView);
+    Focl_String* strName = FoclStringPoolAlloc(context->strPool);
+    FoclStrAssignStr(strName, str);
     Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
     Focl_ValueOpDt valueOpDt = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
-    FoclHashTableInsert(context->curEnv->objTable, str, obj, StrKeyCompare, &keyOpDt, &valueOpDt);
+    FoclHashTableInsert(context->curEnv->objTable, strName, obj, StrKeyCompare, &keyOpDt, &valueOpDt);
 }
 void freeFoclObjTable(Focl_ObjTable* objTable, Focl_Context* context)
 {
@@ -1676,17 +1678,21 @@ void freeFoclObjTable(Focl_ObjTable* objTable, Focl_Context* context)
 
 /* COMMAND TABLE */
 
-Focl_Command* createFoclCommandBuildIn(Focl_CommandFunc cmdFunc)
+Focl_Command* createFoclCommandBuildIn(Focl_CommandFunc cmdFunc, Focl_StringPool* strPool, const char* cmdName)
 {
     Focl_Command* cmd = (Focl_Command*)malloc(sizeof(Focl_Command));
     cmd->func = cmdFunc;
+    cmd->name = FoclStringPoolAlloc(strPool);
+    FoclStrAssign(cmd->name, cmdName);
     cmd->proc = NULL;
     cmd->args = NULL;
     return cmd;
 }
-Focl_Command* createFoclCommand(Focl_StringPool* strPool, Focl_StringView* argsView, Focl_StringView* procView)
+Focl_Command* createFoclCommand(Focl_StringPool* strPool, Focl_String* cmdName, Focl_StringView* argsView, Focl_StringView* procView)
 {
     Focl_Command* cmd = (Focl_Command*)malloc(sizeof(Focl_Command));
+    cmd->name = FoclStringPoolAlloc(strPool);
+    FoclStrAssignStr(cmd->name, cmdName);
     cmd->func = Focl_evalProc;
     cmd->proc = FoclStringPoolAlloc(strPool);
     FoclStrAssignView(cmd->proc, procView);
@@ -1738,26 +1744,37 @@ void freeFoclCommandTable(Focl_CommandTable* cmdTable, Focl_StringPool* strPool)
 
 /* ENVIRONMENT */
 
-Focl_Environment* createFoclEnvironment(Focl_Environment* parent_) /* If parent_ is NULL, it will create a root(or global) environment. */
+/* If parent_ is NULL, it will create a root(or global) environment. and also, if the parent_ is null, it will neglect the envName and keep using "::" */
+Focl_Environment* createFoclEnvironment(Focl_Environment* parent_, Focl_StringPool* strPool, Focl_VectorPool* strVecPool, char* envName)
 {
     Focl_Environment* env = (Focl_Environment*)malloc(sizeof(Focl_Environment));
     env->parent = parent_;
-    if (parent_ == NULL)
-    {
-        env->level = 0;
-    }
-    else
+    if (parent_ != NULL)
     {
         env->level = parent_->level + 1;
     }
+    else
+    {
+        env->level = 0;
+    }
     env->cmdTable = createFoclCommandTable();
     env->objTable = createFoclObjTable();
+    env->envNamespace = FoclStringPoolAlloc(strPool);
+    if (parent_ != NULL)
+    {
+        FoclStrAssignStr(env->envNamespace, parent_->envNamespace);
+        FoclStrAppend(env->envNamespace, envName);
+    }
+    FoclStrAppend(env->envNamespace, "::");
+    env->namespaceVec = FoclVectorPoolAlloc(strVecPool);
     return env;
 }
 void freeFoclEnvironment(Focl_Environment* env, Focl_Context* context)
 {
     freeFoclCommandTable(env->cmdTable, context->strPool);
     freeFoclObjTable(env->objTable, context);
+    FoclVectorPoolFree(env->namespaceVec, context->strVecPool);
+    FoclStringPoolFree(env->envNamespace, context->strPool);
     free(env);
 }
 
@@ -1768,13 +1785,14 @@ void freeFoclEnvironment(Focl_Environment* env, Focl_Context* context)
 Focl_Context* createFoclContext(FILE* outpotfPtr)
 {
     Focl_Context* context = (Focl_Context*)malloc(sizeof(Focl_Context));
-    context->globalEnv = createFoclEnvironment(NULL);
-    context->curEnv = context->globalEnv;
     context->strPool = createFoclStringPool();
-    context->vecPool = createFoclVectorPool();
+    context->objVecPool = createFoclVectorPool(sizeof(Focl_Object*));
+    context->strVecPool = createFoclVectorPool(sizeof(Focl_String*));
     context->objWithNoStrPool = createFoclObjWithNoStringPool();
     context->strObjPool = createFoclStringObjPool(context->strPool);
     context->outBuffer = createFoclIOBuffer(outpotfPtr, FOCL_IOBUFFER_DEFAULT_SIZE);
+    context->globalEnv = createFoclEnvironment(NULL, context->strPool, context->strVecPool, NULL);
+    context->curEnv = context->globalEnv;
     context->exitCode = 0;
     context->hasBreakBuf = false;
     context->hasContinueBuf = false;
@@ -1797,13 +1815,13 @@ void freeFoclContext(Focl_Context* context)
     freeFoclStringObjPool(context->strObjPool, context->strPool);
     freeFoclObjWithNoStringPool(context->objWithNoStrPool);
     freeFoclStringPool(context->strPool);
-    freeFoclVectorPool(context->vecPool);
+    freeFoclVectorPool(context->objVecPool);
     freeFoclIOBuffer(context->outBuffer);
     free(context);
 }
-void FoclContextCreateEnterChildEnv(Focl_Context* context)
+void FoclContextCreateEnterChildEnv(Focl_Context* context, char* envName)
 {
-    Focl_Environment* childEnv = createFoclEnvironment(context->curEnv);
+    Focl_Environment* childEnv = createFoclEnvironment(context->curEnv, context->strPool, context->strVecPool, envName);
     context->curEnv = childEnv;
 }
 void FoclContextExitFreeChildEnv(Focl_Context* context)
@@ -1815,65 +1833,93 @@ void FoclContextExitFreeChildEnv(Focl_Context* context)
     context->curEnv = parentEnv;
 }
 
-Focl_Object* FindObjectInContext(Focl_Context* context, Focl_StringView* strView)
-{
-    Focl_Environment* cEnv = context->curEnv;
-    Focl_Object* obj;
-    Focl_String tmpStr;
-    char saved = initTempFoclStringWithView(&tmpStr, strView);
-    while (cEnv != NULL)
-    {
-        obj = FindObjectInTable(cEnv->objTable, &tmpStr);
-        if (obj != FOCL_OBJECT_ERROR)
-        {
-            restoreFoclStringViewFromTempString(strView, saved);
-            return obj;
-        }
-        cEnv = cEnv->parent;
-    }
-    restoreFoclStringViewFromTempString(strView, saved);
-    return FOCL_OBJECT_ERROR;
-}
-Focl_Object* FindObjectInEnvironment(Focl_Environment* env, Focl_StringView* strView)
+/* Firstly, it will search under current namespace, then the imported. */
+Focl_Object* FindObjectInEnvironment(Focl_Environment* env, Focl_StringPool* strPool, const Focl_String* target)
 {
     Focl_Object* obj;
-    Focl_String tmpStr;
-    char saved = initTempFoclStringWithView(&tmpStr, strView);
-    obj = FindObjectInTable(env->objTable, &tmpStr);
+    Focl_String* tmpStr = FoclStringPoolAlloc(strPool);
+    FoclStrAssignStr(tmpStr, env->envNamespace);
+    FoclStrAppendStr(tmpStr, target);
+    obj = FindObjectInTable(env->objTable, tmpStr);
     if (obj != FOCL_OBJECT_ERROR)
     {
-        restoreFoclStringViewFromTempString(strView, saved);
+        FoclStringPoolFree(tmpStr, strPool);
         return obj;
     }
-    restoreFoclStringViewFromTempString(strView, saved);
+    size_t nsVecSize = FoclVectorGetSize(env->namespaceVec);
+    for (size_t i = 0; i < nsVecSize; i++)
+    {
+        FoclStrClear(tmpStr);
+        FoclStrAssignStr(tmpStr, *(Focl_String**)FoclVectorAtNoCheck(env->namespaceVec, i));
+        FoclStrAppendStr(tmpStr, target);
+        obj = FindObjectInTable(env->objTable, tmpStr);
+        if (obj != FOCL_OBJECT_ERROR)
+        {
+            FoclStringPoolFree(tmpStr, strPool);
+            return obj;
+        }
+    }
+    FoclStringPoolFree(tmpStr, strPool);
     return FOCL_OBJECT_ERROR;
 }
 
-Focl_Command* FindCommandInContext(Focl_Context* context, Focl_StringView* strView)
+Focl_Command* FindCommandInEnvironment(Focl_Environment* env, Focl_StringPool* strPool, const Focl_String* target)
 {
-    /* It will search in basic command(global command) first. */
-    Focl_Environment* gEnv = context->globalEnv;
-    Focl_String tmpStr;
-    char saved = initTempFoclStringWithView(&tmpStr, strView);
-    Focl_Command* cmd = FindCommandInTable(gEnv->cmdTable, &tmpStr);
+    Focl_Command* cmd;
+    Focl_String* tmpStr = FoclStringPoolAlloc(strPool);
+    FoclStrAssignStr(tmpStr, env->envNamespace);
+    FoclStrAppendStr(tmpStr, target);
+    cmd = FindCommandInTable(env->cmdTable, tmpStr);
     if (cmd != FOCL_COMMAND_ERROR)
     {
-        restoreFoclStringViewFromTempString(strView, saved);
+        FoclStringPoolFree(tmpStr, strPool);
         return cmd;
     }
-
-    Focl_Environment* cEnv = context->curEnv;
-    while (cEnv != gEnv)
+    size_t nsVecSize = FoclVectorGetSize(env->namespaceVec);
+    for (size_t i = 0; i < nsVecSize; i++)
     {
-        cmd = FindCommandInTable(cEnv->cmdTable, &tmpStr);
+        FoclStrClear(tmpStr);
+        FoclStrAssignStr(tmpStr, *(Focl_String**)FoclVectorAtNoCheck(env->namespaceVec, i));
+        FoclStrAppendStr(tmpStr, target);
+        cmd = FindCommandInTable(env->objTable, tmpStr);
         if (cmd != FOCL_COMMAND_ERROR)
         {
-            restoreFoclStringViewFromTempString(strView, saved);
+            FoclStringPoolFree(tmpStr, strPool);
             return cmd;
         }
-        cEnv = cEnv->parent;
     }
-    restoreFoclStringViewFromTempString(strView, saved);
+    return FOCL_COMMAND_ERROR;
+}
+
+Focl_Object* Focl_FindObject(Focl_Context* context, const Focl_String* target)
+{
+    Focl_Object* obj;
+    Focl_Environment* currentEnv = context->curEnv;
+    while (currentEnv != NULL)
+    {
+        obj = FindObjectInEnvironment(currentEnv, context->strPool, target);
+        if (obj != FOCL_OBJECT_ERROR)
+        {
+            return obj;
+        }
+        currentEnv = currentEnv->parent;
+    }
+    return FOCL_OBJECT_ERROR;
+}
+
+Focl_Command* Focl_FindCommand(Focl_Context* context, const Focl_String* target)
+{
+    Focl_Command* cmd;
+    Focl_Environment* currentEnv = context->curEnv;
+    while (currentEnv != NULL)
+    {
+        cmd = FindCommandInEnvironment(currentEnv, context->strPool, target);
+        if (cmd != FOCL_COMMAND_ERROR)
+        {
+            return cmd;
+        }
+        currentEnv = currentEnv->parent;
+    }
     return FOCL_COMMAND_ERROR;
 }
 
@@ -1964,7 +2010,7 @@ Focl_Object* exprParseVariable(Focl_ExprParser* p)
     const char* start = p->pos;
     if (!((*p->pos >= 'a' && *p->pos <= 'z') ||
           (*p->pos >= 'A' && *p->pos <= 'Z') ||
-          *p->pos == '_'))
+          *p->pos == '_' || *p->pos == ':'))
     {
         return NULL;
     }
@@ -1973,13 +2019,16 @@ Focl_Object* exprParseVariable(Focl_ExprParser* p)
            ((*p->pos >= 'a' && *p->pos <= 'z') ||
             (*p->pos >= 'A' && *p->pos <= 'Z') ||
             (*p->pos >= '0' && *p->pos <= '9') ||
-            *p->pos == '_'))
+            *p->pos == '_' || *p->pos == ':'))
     {
         p->pos++;
     }
     size_t len = p->pos - start;
     Focl_StringView varName = {len, (char*)start};
-    Focl_Object* var = FindObjectInContext(p->context, &varName);
+    Focl_String tmpStr;
+    char saved = initTempFoclStringWithView(&tmpStr, &varName);
+    Focl_Object* var = Focl_FindObject(p->context, &tmpStr);
+    restoreFoclStringViewFromTempString(&varName, saved);
     if (var == FOCL_OBJECT_ERROR)
     {
         return FoclObjectError(p->context->strObjPool, p->context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
@@ -2373,12 +2422,25 @@ Focl_StringView getNextLine(Focl_StringView* start)
     char* startEnd = start->strPtr + start->len;
     
     while (ptr < startEnd && isspace(*ptr))
+    {
         ptr++;
+    }
     if (ptr >= startEnd || *ptr == '\0')
     {
         start->strPtr = startEnd;
         start->len = 0;
         return (Focl_StringView){0, NULL};
+    }
+    if (*ptr == '#')
+    {
+        while (ptr < startEnd && *ptr != '\n')
+        {
+            ptr++;
+        }
+        if (ptr < startEnd) ptr++;
+        start->strPtr = ptr;
+        start->len = startEnd - ptr;
+        return getNextLine(start);
     }
     
     char* wordStart = ptr;
@@ -2549,8 +2611,10 @@ void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_String
             else
             {
                 Focl_StringView varName = {(size_t)(varEnd - varStart), (char*)varStart};
-                Focl_Object* objPtr = FindObjectInContext(context, &varName);
-
+                Focl_String tmpStr;
+                char saved = initTempFoclStringWithView(&tmpStr, &varName);
+                Focl_Object* objPtr = Focl_FindObject(context, &tmpStr);
+                restoreFoclStringViewFromTempString(&varName, saved);
                 if (objPtr != FOCL_OBJECT_ERROR)
                 {
                     Focl_Object* object = (Focl_Object*)objPtr;
@@ -2887,12 +2951,15 @@ Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* str
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
     }
-    Focl_Command* cmd = FindCommandInContext(context, &cmdView);
+    Focl_String tmpCmdStr;
+    char saved = initTempFoclStringWithView(&tmpCmdStr, &cmdView);
+    Focl_Command* cmd = Focl_FindCommand(context, &tmpCmdStr);
+    restoreFoclStringViewFromTempString(&cmdView, saved);
     if (cmd == FOCL_COMMAND_ERROR)
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
     }
-    Focl_Vector* vec = FoclVectorPoolAlloc(context->vecPool);
+    Focl_Vector* vec = FoclVectorPoolAlloc(context->objVecPool);
     Focl_Object* obj;
     while (remaining.len > 0)
     {
@@ -2909,7 +2976,7 @@ Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* str
     {
         FoclObjectRelease(FoclObjVecAt(vec, i), context);
     }
-    FoclVectorPoolFree(vec, context->vecPool);
+    FoclVectorPoolFree(vec, context->objVecPool);
     return obj;
 }
 Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView)
@@ -3097,13 +3164,14 @@ Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
 {
     Focl_StringView argsView = { cmd->args->length, cmd->args->data };
     Focl_Object* retValue;
-    FoclContextCreateEnterChildEnv(context);
+    FoclContextCreateEnterChildEnv(context, FoclStrCStr(cmd->name));
     if (argsView.len > 2)
     {
         Focl_StringView argView = FoclStringViewPeelBoth(&argsView);
         size_t argCount = FoclVectorGetSize(objVec);
         Focl_StringView remaining = argView;
 
+        Focl_String* argTmpStr = FoclStringPoolAlloc(context->strPool);
         for (size_t i = 0; i < argCount; i++)
         {
             Focl_StringView arg = getNextWord(&remaining);
@@ -3114,8 +3182,11 @@ Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
             }
             Focl_Object* originObj = FoclObjVecAt(objVec, i);
             Focl_Object* newObj = FoclObjPoolAllocAssign(context, originObj);
-            LinkObjectWithName_View(context, newObj, &arg);
+            FoclStrClear(argTmpStr);
+            FoclStrAssignView(argTmpStr, &arg);
+            LinkObjectWithName(context, newObj, argTmpStr);
         }
+        FoclStringPoolFree(argTmpStr, context->strPool);
         Focl_StringView leftover = getNextWord(&remaining);
         if (leftover.strPtr != NULL && leftover.len != 0)
         {
@@ -3145,8 +3216,9 @@ exitChildEnv:
 void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_CommandFunc func)
 {
     Focl_String* _name = FoclStringPoolAlloc(context->strPool);
-    FoclStrAssign(_name, cmdName);
-    Focl_Command* _cmd = createFoclCommandBuildIn(func);
+    FoclStrAssign(_name, "::");
+    FoclStrAppend(_name, cmdName);
+    Focl_Command* _cmd = createFoclCommandBuildIn(func, context->strPool, cmdName);
     Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
     FoclHashTableInsert(context->globalEnv->cmdTable, _name, _cmd, StrKeyCompare, &keyOpDt, NULL);
 }
@@ -3191,6 +3263,7 @@ int focl_countBraceDepth(const char* str)
     int depth = 0;
     bool inString = false;
 
+    char prev = '\0';
     for (const char* p = str; *p; p++)
     {
         if (*p == '\\' && inString)
@@ -3209,14 +3282,15 @@ int focl_countBraceDepth(const char* str)
             continue;
         }
 
-        if (*p == '[' || *p == '{')
+        if ((*p == '[' && prev != '\\') || (*p == '{' && prev != '\\'))
         {
             depth++;
         }
-        else if (*p == ']' || *p == '}')
+        else if ((*p == ']' && prev != '\\') || (*p == '}' && prev != '\\'))
         {
             depth--;
         }
+        prev = *p;
     }
     return depth;
 }

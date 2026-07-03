@@ -1,21 +1,15 @@
-MIT License
+Focl uses a custom license, the terms of which are as follows:
 
-Copyright (c) 2026 camphor-h
+Focl permits programs to embed or use Focl as part of their projects, regardless of whether they are open-source or proprietary, and allows both static and dynamic linking.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+There is only one circumstance under which users are required to open-source part of their code:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+When users modify Focl's code (including its built-in commands and core libraries) and publish their program with modified Focl embeded, they must make the modified portions publicly available with this License. Note that user-defined commands or additional components are not subject to this requirement.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Disclaimer of Warranty:
+
+    "This software is provided 'as is', without any express or implied warranties, including but not limited to the warranties of merchantability and fitness for a particular purpose. The author shall not be liable for any direct or indirect damages."
+
+Definition of "Open-Sourcing Modified Portions":
+
+    "'Open-sourcing the modified portions' means that such portions shall be made publicly available in source code form through a public code hosting platform (e.g., GitHub, Gitee, etc.) and provided to third parties under the same terms as this license."
