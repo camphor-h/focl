@@ -1,3 +1,6 @@
+#include <stdlib.h>
+#include <string.h>
+
 #include "focl.h"
 #include "sys_lean.h"
 

@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <limits.h>
+#include <stddef.h>
 #include "focl_dev.h"
 
 /* The basic command pack of focl. */
