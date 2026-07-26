@@ -1,6 +1,7 @@
 #ifndef FOCL_DEV_H
 #define FOCL_DEV_H
 
+#include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
 #include <setjmp.h>
@@ -75,11 +76,17 @@ typedef struct Focl_String
 
 int32_t FoclStrAt(size_t idx, char** start, size_t* hadSearchIdx);
 int FoclStrComp(const Focl_String* str, const char* cStr);
-void FoclStrAppendStr(Focl_String* dst, const Focl_String* src);
 int FoclStrCompStr(const Focl_String* str1, const Focl_String* str2);
+void FoclStrClear(Focl_String* str);
+void FoclStrAppend(Focl_String* str, const char* Cstr);
+void FoclStrAppendStr(Focl_String* dst, const Focl_String* src);
 void FoclStrAssign(Focl_String* str, const char* cStr);
 void FoclStrAssignStr(Focl_String* dst, const Focl_String* src);
 
+void FoclStringOpCt(Focl_String* str, size_t iCapacity);
+void FoclStringOpDt(Focl_String* str);
+
+size_t FoclStrCharCount(const Focl_String* str);
 bool StrKeyCompare(void* a, void* b);
 
 bool Focl_isInteger(const char* str);
@@ -108,6 +115,8 @@ typedef struct Focl_Vector
     void* data;
 }Focl_Vector;
 
+void FoclVectorPushBack(Focl_Vector* vec, void* data);
+void FoclVectorPopBack(Focl_Vector* vec);
 size_t FoclVectorGetSize(Focl_Vector* vec);
 
 typedef struct Focl_PoolBlock
@@ -337,7 +346,10 @@ void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer);
 Focl_Object* FoclObjectScan(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Object* obj);
 Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
 void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_CommandFunc func);
-size_t FoclStrCharCount(const Focl_String* str);
+
+int focl_countBraceDepth(const char* str);
+
+char* Focl_getline(FILE* fp, size_t* len);
 
 #define FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, dsttype, strObjPool, strPool) \
     obj = FoclObjVecAt(objVec, idx); \
