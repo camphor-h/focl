@@ -1,6 +1,5 @@
 /* Currently I have no motivation to implement readline on my system.
  * Let's just use linenoise. I'm sorry Salvatore Sanfilippo. :( */
-#include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include "focl_dev.h"
@@ -8,6 +7,7 @@
 
 int Focl_REPL(Focl_Context* ctx)
 {
+    Focl_String* prompt = FoclStringPoolAlloc(ctx->strPool);
     Focl_String buffer;
     FoclStringOpCt(&buffer, FOCL_STRING_INIT_CAPACITY);
     int depth = 0;
@@ -21,25 +21,27 @@ int Focl_REPL(Focl_Context* ctx)
 
     while (1)
     {
+        FoclStrClear(prompt);
         if (depth > 0)
         {
             for (int d = depth; d > 0; d--)
             {
-                putchar('.');
+                FoclStrAppend(prompt, ".");
             }
-            putchar(' ');
+            FoclStrAppend(prompt, " ");
         }
         else
         {
-            printf("> ");
+            FoclStrAppend(prompt, "> ");
         }
-        fflush(stdout);
 
         size_t lineLen = 0;
     #ifdef _WIN32
+        printf(FoclStrCStr(prompt));
+        fflush(stdout);
         char* input = Focl_getline(stdin, &lineLen);
     #else
-        char* input = linenoise("");
+        char* input = linenoise(prompt);
     #endif
         if (input == NULL)
         {
@@ -96,5 +98,6 @@ int Focl_REPL(Focl_Context* ctx)
 
     ctx->hasExitBuf = false;
     FoclStringOpDt(&buffer);
+    FoclStringPoolFree(prompt, ctx->strPool);
     return ctx->exitCode;
 }
