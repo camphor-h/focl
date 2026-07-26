@@ -41,7 +41,7 @@ int Focl_REPL(Focl_Context* ctx)
         fflush(stdout);
         char* input = Focl_getline(stdin, &lineLen);
     #else
-        char* input = linenoise(prompt);
+        char* input = linenoise(FoclStrCStr(prompt));
     #endif
         if (input == NULL)
         {
