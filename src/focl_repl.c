@@ -2,6 +2,7 @@
  * Let's just use linenoise. I'm sorry Salvatore Sanfilippo. :( */
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include "focl_dev.h"
 #include "linenoise.h"
 
@@ -42,6 +43,7 @@ int Focl_REPL(Focl_Context* ctx)
         char* input = Focl_getline(stdin, &lineLen);
     #else
         char* input = linenoise(FoclStrCStr(prompt));
+        lineLen = strlen(input);
     #endif
         if (input == NULL)
         {
