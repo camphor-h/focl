@@ -15,7 +15,8 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/fcntl.h>
+#include <fcntl.h>
+#include <pwd.h>
 #include <libgen.h>
 #endif
 
