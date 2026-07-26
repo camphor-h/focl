@@ -23,5 +23,6 @@ int Focl_mkdir(const char* path); /* no -r */
 char* Focl_realpath(const char* path, char* resolvedPath, size_t bufferSize);
 char* Focl_dirname(const char* path); /* free the return value! */
 int Focl_fileCopy(const char* src, const char* dst);
+char* Focl_GetHomeDirectory();
 
 #endif

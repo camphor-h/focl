@@ -10,6 +10,7 @@
 #include <dirent.h>
 #include <windows.h>
 #include <io.h>
+#include <shlobj.h>
 #else
 #include <unistd.h>
 #include <sys/stat.h>
@@ -201,4 +202,42 @@ int Focl_fileCopy(const char* src, const char* dst)
     fclose(fsrc);
     fclose(fdst);
     return result;
+}
+
+char* Focl_GetHomeDirectory()
+{
+    char* home = NULL;
+#ifdef _WIN32
+    char path[MAX_PATH];
+    HRESULT result = SHGetFolderPathA(NULL, CSIDL_PROFILE, NULL, 0, path);
+    if (SUCCEEDED(result))
+    {
+        home = (char*)malloc(strlen(path) + 1);
+        if (home)
+        {
+            strcpy(home, path);
+        }
+    }
+#else
+    home = getenv("HOME");
+    if (home)
+    {
+        char* temp = (char*)malloc(strlen(home) + 1);
+        if (temp)
+        {
+            strcpy(temp, home);
+            return temp;
+        }
+    }
+    struct passwd* passwordEntry = getpwuid(getuid());
+    if (passwordEntry && passwordEntry->pw_dir)
+    {
+        home = (char*)malloc(strlen(passwordEntry->pw_dir) + 1);
+        if (home)
+        {
+            strcpy(home, passwordEntry->pw_dir);
+        }
+    }
+#endif
+    return home;
 }
