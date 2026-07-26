@@ -4,7 +4,6 @@
 #include <time.h>
 #include <limits.h>
 #include "focl_dev.h"
-#include "sys_lean.h"
 
 /* The basic command pack of focl. */
 
@@ -962,7 +961,7 @@ Focl_Object* buildIn_append(Focl_Context* context, Focl_Vector* objVec, Focl_Com
     FoclObjectRetain(dst);
     return dst;
 }
-Focl_Object* buildIn_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Object* buildIn_namespace(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     size_t argCount = FoclVectorGetSize(objVec);
@@ -975,144 +974,23 @@ Focl_Object* buildIn_file(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     Focl_Object* retValue;
     FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, childCmdObj, context->strObjPool, context->strPool);
     FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 1, targetObj, context->strObjPool, context->strPool);
-    if (FoclStrComp(FoclObjectGetString(childCmdObj), "exists") == 0)
+    if (FoclStrComp(FoclObjectGetString(childCmdObj), "import") == 0)
     {
-        if (argCount != 2)
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
-        }
-        if (!Focl_isFileExist(FoclStrCStr(FoclObjectGetString(targetObj))))
-        {
-            return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_TRUE);
-        }
-        else
-        {
-            return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_FALSE);
-        }
-    }
-    else if (FoclStrComp(FoclObjectGetString(childCmdObj), "isfile") == 0)
-    {
-        if (argCount != 2)
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
-        }
-
-        if (!Focl_isFileExist(FoclStrCStr(FoclObjectGetString(targetObj))))
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, "file doesn't exist");
-        }
-        if (Focl_isNormalFile(FoclStrCStr(FoclObjectGetString(targetObj))))
-        {
-            return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_TRUE);
-        }
-        else
-        {
-            return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_FALSE);
-        }
-    }
-    else if (FoclStrComp(FoclObjectGetString(childCmdObj), "isdirectory") == 0)
-    {
-        if (argCount != 2)
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
-        }
-
-        if (!Focl_isFileExist(FoclStrCStr(FoclObjectGetString(targetObj))))
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, "file doesn't exist");
-        }
-        if (Focl_isDir(FoclStrCStr(FoclObjectGetString(targetObj))))
-        {
-            return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_TRUE);
-        }
-        else
-        {
-            return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_FALSE);
-        }
-    }
-    else if (FoclStrComp(FoclObjectGetString(childCmdObj), "size") == 0)
-    {
-        if (argCount != 2)
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
-        }
-
-        if (!Focl_isFileExist(FoclStrCStr(FoclObjectGetString(targetObj))))
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, "file doesn't exist");
-        }
-        if (Focl_isNormalFile(FoclStrCStr(FoclObjectGetString(targetObj))))
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, "The command \"file size\" should be used on a normal file");
-        }
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
-        FoclObjectBoxInt(retValue, Focl_GetFileSize(FoclStrCStr(FoclObjectGetString(targetObj))));
-    }
-    else if (FoclStrComp(FoclObjectGetString(childCmdObj), "mkdir") == 0)
-    {
-        if (argCount != 2)
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
-        }
-        int retMkdir = Focl_mkdir(FoclStrCStr(FoclObjectGetString(targetObj)));
-        if (retMkdir != 0)
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, "Cannot mkdir");
-        }
+        Focl_String* nsToImport = FoclStringPoolAlloc(context->strPool);
+        FoclStrAssign(nsToImport, "::");
+        FoclStrAppendStr(nsToImport, FoclObjectGetString(targetObj));
+        FoclStrAppend(nsToImport, "::");
+        FoclVectorPushBack(context->curEnv->namespaceVec, &nsToImport);
         retValue = FoclObjectVoid(context->strObjPool, context->strPool);
-    }
-    else if (FoclStrComp(FoclObjectGetString(childCmdObj), "dirname") == 0)
-    {
-        if (argCount != 2)
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
-        }
-
-        if (Focl_isFileExist(FoclStrCStr(FoclObjectGetString(targetObj))))
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, "file doesn't exist");
-        }
-        char* dirCStr = Focl_dirname(FoclStrCStr(FoclObjectGetString(targetObj)));
-        retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
-        FoclStrAssign(FoclObjectGetString(retValue), dirCStr);
-        free(dirCStr);
-    }
-    else if (FoclStrComp(FoclObjectGetString(childCmdObj), "realpath") == 0)
-    {
-        if (argCount != 2)
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
-        }
-
-        if (Focl_isFileExist(FoclStrCStr(FoclObjectGetString(targetObj))))
-        {
-            return FoclObjectError(context->strObjPool, context->strPool, "file or path doesn't exist");
-        }
-        char buffer[PATH_MAX];
-        Focl_realpath(FoclStrCStr(FoclObjectGetString(targetObj)), buffer, PATH_MAX);
-        retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
-        FoclStrAssign(FoclObjectGetString(retValue), buffer);
     }
     else
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
+        retValue = FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
     }
     return retValue;
 }
-Focl_Object* buildIn_exec(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
-{
-    (void)cmd;
-    if (FoclVectorGetSize(objVec) != 1)
-    {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
-    }
-    Focl_Object* sysCmdObj;
-    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, sysCmdObj, context->strObjPool, context->strPool);
-    system(FoclStrCStr(FoclObjectGetString(sysCmdObj)));
-    return FoclObjectVoid(context->strObjPool, context->strPool);
-}
 
-void Focl_RegisterBuiltinCommands(Focl_Context* context)
+void Focl_RegisterUtilsCommand(Focl_Context* context)
 {
     FoclRegisterCommand(context, "puts", buildIn_puts);
     FoclRegisterCommand(context, "gets", buildIn_gets);
@@ -1142,6 +1020,5 @@ void Focl_RegisterBuiltinCommands(Focl_Context* context)
     FoclRegisterCommand(context, "randf", buildIn_randf);
     FoclRegisterCommand(context, "string", buildIn_string);
     FoclRegisterCommand(context, "append", buildIn_append);
-    FoclRegisterCommand(context, "file", buildIn_file);
-    FoclRegisterCommand(context, "exec", buildIn_exec);
+    FoclRegisterCommand(context, "namespace", buildIn_namespace);
 }

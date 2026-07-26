@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -1793,6 +1792,12 @@ void freeFoclEnvironment(Focl_Environment* env, Focl_Context* context)
 {
     freeFoclCommandTable(env->cmdTable, context->strPool);
     freeFoclObjTable(env->objTable, context);
+    size_t nsCount = FoclVectorGetSize(env->namespaceVec);
+    for (size_t i = 0; i < nsCount; i++)
+    {
+        Focl_String* ns = *(Focl_String**)FoclVectorAtNoCheck(env->namespaceVec, i);
+        FoclStringPoolFree(ns, context->strPool);
+    }
     FoclVectorPoolFree(env->namespaceVec, context->strVecPool);
     FoclStringPoolFree(env->envNamespace, context->strPool);
     free(env);
@@ -1908,6 +1913,7 @@ Focl_Command* FindCommandInEnvironment(Focl_Environment* env, Focl_StringPool* s
             return cmd;
         }
     }
+    FoclStringPoolFree(tmpStr, strPool);
     return FOCL_COMMAND_ERROR;
 }
 Focl_Command* Focl_FindCommand(Focl_Context* context, const Focl_String* target)
@@ -3297,84 +3303,6 @@ int focl_countBraceDepth(const char* str)
         prev = *p;
     }
     return depth;
-}
-int Focl_REPL(Focl_Context* ctx)
-{
-    Focl_String buffer;
-    FoclStringOpCt(&buffer, FOCL_STRING_INIT_CAPACITY);
-    int depth = 0;
-    ctx->hasExitBuf = true;
-    if (setjmp(ctx->exitBuf) != 0)
-    {
-        FoclStringOpDt(&buffer);
-        ctx->hasExitBuf = false;
-        return ctx->exitCode;
-    }
-
-    while (1)
-    {
-        if (depth > 0)
-        {
-            for (int d = depth; d > 0; d--)
-            {
-                putchar('.');
-            }
-            putchar(' ');
-        }
-        else
-        {
-            printf("> ");
-        }
-        fflush(stdout);
-
-        size_t lineLen = 0;
-        char* input = Focl_getline(stdin, &lineLen);
-        if (input == NULL)
-        {
-            printf("\n");
-            break;
-        }
-        if (lineLen == 0 && depth == 0)
-        {
-            free(input);
-            continue;
-        }
-        if (buffer.length > 0)
-        {
-            FoclStrAppend(&buffer, "\n");
-        }
-        FoclStrAppend(&buffer, input);
-        depth += focl_countBraceDepth(input);
-        if (depth < 0)
-        {
-            depth = 0;
-        }
-        free(input);
-
-        if (depth > 0)
-        {
-            continue;
-        }
-        Focl_Object* result = Focl_parseLine(ctx, &buffer);
-
-        if (result->type == FOCL_OBJ_TYPE_ERROR)
-        {
-            FoclIOBufferPrintf(ctx->outBuffer, "Error: %s\n", FoclStrCStr(result->as.data));
-        }
-        else if (result->type != FOCL_OBJ_TYPE_VOID)
-        {
-            FoclObjectPrint(result, ctx->outBuffer);
-            FoclIOBufferPutChar(ctx->outBuffer, '\n');
-        }
-
-        FoclObjectRelease(result, ctx);
-        FoclStrClear(&buffer);
-        depth = 0;
-    }
-
-    ctx->hasExitBuf = false;
-    FoclStringOpDt(&buffer);
-    return ctx->exitCode;
 }
 int Focl_ExecFile(Focl_Context* ctx, const char* filename)
 {
