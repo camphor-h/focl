@@ -1609,12 +1609,12 @@ Focl_Object* FoclObjWithNoStringPoolAlloc(Focl_ObjWithNoStrPool* objPool, Focl_O
     obj->type = type_;
     return obj;
 }
-Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* objPool, Focl_StringPool* strPool, Focl_Obj_Type type_)
+Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Obj_Type type_)
 {
     /* it won't do anything for detail string type. except clear string no matter whether it's void type. */
     Focl_TypeOpCt opCt = {.ctx = strPool, .func = FoclStringObjectOpCtVoid};
     Focl_TypeOpCl opCl = {.ctx = NULL, .func = FoclStringObjectOpClVoid};
-    Focl_Object* obj = (Focl_Object*)FoclPoolAllocEx(objPool, &opCt, &opCl);
+    Focl_Object* obj = (Focl_Object*)FoclPoolAllocEx(strObjPool, &opCt, &opCl);
     obj->type = type_;
     return obj;
 }

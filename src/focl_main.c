@@ -50,9 +50,10 @@ int main(int argc, char* argv[])
 #endif
     Focl_Context* ctx = createFoclContext(stdout);
     Focl_RegisterBuiltinCommands(ctx);
-    int exitCode;
+    int exitCode = 0;
     bool shouldExecFoclrc = true;
-    char* fileToOpen = NULL; /* if it's NULL it will open REPL */
+    bool shouldEnterREPL = true;
+    char* fileToOpen = NULL;
     if (argc > 1)
     {
         for (int i = 1; i < argc; i++)
@@ -61,9 +62,26 @@ int main(int argc, char* argv[])
             {
                 shouldExecFoclrc = false;
             }
+            else if (strcmp(argv[i], "-c") == 0)
+            {
+                if (argc > i + 1)
+                {
+                    i++;
+                    FoclObjectRelease(Focl_eval(ctx, argv[i]), ctx);
+                    shouldEnterREPL = false;
+                    fileToOpen = NULL;
+                }
+                else
+                {
+                    printf("Cannot get content from command line.\n");
+                    shouldEnterREPL = false;
+                    exitCode = 1;
+                }
+            }
             else
             {
                 fileToOpen = argv[i];
+                shouldEnterREPL = false;
             }
         }
     }
@@ -78,15 +96,19 @@ int main(int argc, char* argv[])
         }
     }
 
-    if (fileToOpen == NULL) /* REPL */
+    if (shouldEnterREPL) /* REPL */
     {
         printf("Focl REPL\n");
         printf("Type \"exit\" to quit.\n");
         exitCode = Focl_REPL(ctx);
     }
-    else /* exec file */
+    else if (fileToOpen != NULL) /* exec file */
     {
         exitCode = Focl_ExecFile(ctx, fileToOpen);
+    }
+    else
+    {
+        ; /* this is very ugly! */
     }
     freeFoclContext(ctx);
     return exitCode;

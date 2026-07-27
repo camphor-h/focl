@@ -2,6 +2,10 @@
 #include "focl_dev.h"
 #include "sys_lean.h"
 
+#define FOCL_SYSERR_IS_A_DIR "cannot execute the control to a directory without \"-r\"."
+#define FOCL_SYSERR_NOT_A_DIR "not a valid directory."
+#define FOCL_SYSERR_UNKNOWN_CTLPMT "unknown control prompt."
+
 Focl_Object* sys_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
@@ -178,10 +182,139 @@ Focl_Object* sys_name(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
 #endif
     return sysName;
 }
+Focl_Object* sys_cp(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    size_t objVecSize = FoclVectorGetSize(objVec);
+    Focl_Object* retValue;
+    Focl_Object* srcpathObj;
+    Focl_Object* dstpathObj;
+    if (objVecSize == 2)
+    {
+        FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, srcpathObj, context->strObjPool, context->strPool);
+        FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 1, dstpathObj, context->strObjPool, context->strPool);
+        char* realSrcPath = Focl_normalizePath(FOCL_STROBJ_CSTR(srcpathObj));
+        char* realDstPath = Focl_normalizePath(FOCL_STROBJ_CSTR(dstpathObj));
+        if (Focl_isNormalFile(realSrcPath))
+        {
+            if (Focl_isDir(realDstPath))
+            {
+                int code = Focl_fileCopy(realSrcPath, realDstPath);
+                if (code == -1)
+                {
+                    FOCL_ERROBJ_ALLOC(retValue, context, "Cannnot copy file.");
+                }
+                else
+                {
+                    retValue = FoclObjectVoid(context->strObjPool, context->strPool);
+                }
+            }
+            else
+            {
+                FOCL_ERROBJ_ALLOC(retValue, context, FOCL_SYSERR_NOT_A_DIR);
+            }
+        }
+        else
+        {
+            FOCL_ERROBJ_ALLOC(retValue, context, FOCL_SYSERR_IS_A_DIR);
+        }
+        free(realSrcPath);
+        free(realDstPath);
+    }
+    else if (objVecSize == 3)
+    {
+        Focl_Object* ctlPrompt;
+        FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, ctlPrompt, context->strObjPool, context->strPool);
+        FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 1, srcpathObj, context->strObjPool, context->strPool);
+        FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 2, dstpathObj, context->strObjPool, context->strPool);
+        if (FoclStrComp(FoclObjectGetString(ctlPrompt), "-r") == 0)
+        {
+            char* realSrcPath = Focl_normalizePath(FOCL_STROBJ_CSTR(srcpathObj));
+            char* realDstPath = Focl_normalizePath(FOCL_STROBJ_CSTR(dstpathObj));
+            int code = Focl_copy(realSrcPath, realDstPath);
+            if (code == -1)
+            {
+                FOCL_ERROBJ_ALLOC(retValue, context, "Cannnot copy file.");
+            }
+            retValue = FoclObjectVoid(context->strObjPool, context->strPool);
+            free(realSrcPath);
+            free(realDstPath);
+        }
+        else
+        {
+            FOCL_ERROBJ_ALLOC(retValue, context, FOCL_SYSERR_UNKNOWN_CTLPMT);
+        }
+    }
+    else
+    {
+        FOCL_ERROBJ_ALLOC(retValue, context, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    return retValue;
+}
+Focl_Object* sys_rm(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    size_t objVecSize = FoclVectorGetSize(objVec);
+    Focl_Object* retValue;
+    Focl_Object* srcpathObj;
+    if (objVecSize == 1)
+    {
+        FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, srcpathObj, context->strObjPool, context->strPool);
+        char* realSrcPath = Focl_normalizePath(FOCL_STROBJ_CSTR(srcpathObj));
+        if (Focl_isNormalFile(realSrcPath))
+        {
+            int code = remove(realSrcPath);
+            if (code == -1)
+            {
+                FOCL_ERROBJ_ALLOC(retValue, context, "Cannnot remove file.");
+            }
+            else
+            {
+                retValue = FoclObjectVoid(context->strObjPool, context->strPool);
+            }
+        }
+        else
+        {
+            FOCL_ERROBJ_ALLOC(retValue, context, FOCL_SYSERR_IS_A_DIR);
+        }
+        free(realSrcPath);
+    }
+    else if (objVecSize == 2)
+    {
+        Focl_Object* ctlPrompt;
+        FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, ctlPrompt, context->strObjPool, context->strPool);
+        FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 1, srcpathObj, context->strObjPool, context->strPool);
+        if (FoclStrComp(FoclObjectGetString(ctlPrompt), "-r") == 0)
+        {
+            char* realSrcPath = Focl_normalizePath(FOCL_STROBJ_CSTR(srcpathObj));
+            int code = Focl_remove(realSrcPath);
+            if (code == -1)
+            {
+                FOCL_ERROBJ_ALLOC(retValue, context, "Cannnot remove file.");
+            }
+            else
+            {
+                retValue = FoclObjectVoid(context->strObjPool, context->strPool);
+            }
+            free(realSrcPath);
+        }
+        else
+        {
+            FOCL_ERROBJ_ALLOC(retValue, context, FOCL_SYSERR_UNKNOWN_CTLPMT);
+        }
+    }
+    else
+    {
+        FOCL_ERROBJ_ALLOC(retValue, context, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    return retValue;
+}
 
 void Focl_RegisterSystemCommand(Focl_Context* context)
 {
     FoclRegisterCommand(context, "sys::file", sys_file);
     FoclRegisterCommand(context, "sys::exec", sys_exec);
     FoclRegisterCommand(context, "sys::name", sys_name);
+    FoclRegisterCommand(context, "sys::cp", sys_cp);
+    FoclRegisterCommand(context, "sys::rm", sys_rm);
 }
