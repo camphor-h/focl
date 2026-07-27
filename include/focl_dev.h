@@ -339,7 +339,7 @@ Focl_StringView FoclObjVecAtAsStringToView(Focl_Vector* objVec, size_t idx);
 char* FoclStrCStr(const Focl_String* str);
 void FoclStringPoolFreeOpDtVoid(void* str, void* strPool);
 Focl_Object* FoclObjWithNoStringPoolAlloc(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Type type_);
-Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* objPool, Focl_StringPool* strPool, Focl_Obj_Type type_);
+Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Obj_Type type_);
 Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src);
 
 void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer);
@@ -361,5 +361,15 @@ char* Focl_getline(FILE* fp, size_t* len);
 #define FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_INT, strObjPool, strPool)
 #define FOCL_OBJ_VEC_AT_AS_FLOAT_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_FLOAT, strObjPool, strPool)
 #define FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_STR, strObjPool, strPool)
+
+#define FOCL_ERROBJ_ALLOC(errobj, ctx, content) \
+    errobj = FoclStringObjPoolAlloc(ctx->strObjPool, ctx->strPool, FOCL_OBJ_TYPE_ERROR); \
+    FoclStrAssign(FoclObjectGetString(errobj), content) \
+
+#define FOCL_STROBJ_ALLOC(strobj, ctx, content) \
+    strobj = FoclStringObjPoolAlloc(ctx->strObjPool, ctx->strPool, FOCL_OBJ_TYPE_STR); \
+    FoclStrAssign(FoclObjectGetString(strobj), content) \
+
+#define FOCL_STROBJ_CSTR(obj) FoclStrCStr(FoclObjectGetString(obj))
 
 #endif
