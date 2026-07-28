@@ -20,6 +20,7 @@
 #include <fcntl.h>
 #include <pwd.h>
 #include <libgen.h>
+    #include <sys/wait.h>
 
 #ifdef __linux__
     #include <linux/fs.h>
@@ -184,6 +185,24 @@ char* Focl_dirname(const char* path) /* free the return value! */
     free(copy);
     return result;
 #endif
+}
+
+
+char* Focl_GetPathLastName(const char *path)
+{
+    const char* last = strrchr(path, '/');
+#ifdef _WIN32
+    const char* last2 = strrchr(path, '\\');
+    if (last2 && (!last || last2 > last))
+    {
+        last = last2;
+    }
+#endif
+    if (last)
+    {
+        return Focl_strdup(last + 1);
+    }
+    return Focl_strdup(path);
 }
 
 #define FOCL_FILECOPY_BUFFER_SIZE 4096
@@ -700,4 +719,68 @@ int Focl_copy(const char* src, const char* dst)
         return Focl_fileCopy(src, dst);
     }
     return Focl_copyDir(src, dst);
+}
+
+int Focl_execAndWait(const char* command, char* const argv[])
+{
+    #ifdef _WIN32
+        STARTUPINFO si = {0};
+        PROCESS_INFORMATION pi = {0};
+        char cmdline[4096] = {0};
+        int i;
+        DWORD exit_code;
+        
+        for (i = 0; argv[i] != NULL; i++)
+        {
+            strcat(cmdline, argv[i]);
+            if (argv[i + 1] != NULL)
+            {
+                strcat(cmdline, " ");
+            }
+        }
+        
+        si.cb = sizeof(STARTUPINFO);
+        si.dwFlags = STARTF_USESTDHANDLES;
+        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+        si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+        if (!CreateProcess(NULL, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi))
+        {
+            return -1;
+        }
+        
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        
+        GetExitCodeProcess(pi.hProcess, &exit_code);
+        
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        
+        return (int)exit_code;
+        
+    #else
+        pid_t pid = fork();
+        int status;
+        
+        if (pid < 0)
+        {
+            return -1;
+        }
+        
+        if (pid == 0)
+        {
+            execvp(command, argv);
+            exit(127);
+        }
+        waitpid(pid, &status, 0);
+        
+        if (WIFEXITED(status))
+        {
+            return WEXITSTATUS(status);
+        }
+        else
+        {
+            return -1;
+        }
+    #endif
 }

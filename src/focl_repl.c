@@ -6,6 +6,9 @@
 #include "focl_dev.h"
 #include "linenoise.h"
 
+#define RED_CTLPMT "\033[1;31m"
+#define CLEAR_CTLPMT "\033[0m"
+
 int Focl_REPL(Focl_Context* ctx)
 {
     Focl_String* prompt = FoclStringPoolAlloc(ctx->strPool);
@@ -85,7 +88,7 @@ int Focl_REPL(Focl_Context* ctx)
 
         if (result->type == FOCL_OBJ_TYPE_ERROR)
         {
-            FoclIOBufferPrintf(ctx->outBuffer, "Error: %s\n", FoclStrCStr(result->as.data));
+            FoclIOBufferPrintf(ctx->outBuffer, RED_CTLPMT"Error: "CLEAR_CTLPMT"%s\n", FoclStrCStr(result->as.data));
         }
         else if (result->type != FOCL_OBJ_TYPE_VOID)
         {

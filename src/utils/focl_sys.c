@@ -1,10 +1,17 @@
 #include <stdlib.h>
+#include <string.h>
 #include "focl_dev.h"
 #include "sys_lean.h"
 
+#define FOCL_SYSERR_CANNOT_FIND_FILE "cannot find file."
+#define FOCL_SYSERR_CANNOT_ACCESS_FILE "cannot access file."
 #define FOCL_SYSERR_IS_A_DIR "cannot execute the control to a directory without \"-r\"."
 #define FOCL_SYSERR_NOT_A_DIR "not a valid directory."
 #define FOCL_SYSERR_UNKNOWN_CTLPMT "unknown control prompt."
+
+#define FOCL_SYS_CAT_BUFFER_SIZE 1024
+
+#define FOCL_EDITOR_VAR_NAME "_FOCL_SYS_USING_EDITOR"
 
 Focl_Object* sys_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -309,6 +316,144 @@ Focl_Object* sys_rm(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
     }
     return retValue;
 }
+Focl_Object* sys_mv(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 2)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* retValue;
+    Focl_Object* srcpathObj;
+    Focl_Object* dstpathObj;
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, srcpathObj, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 1, dstpathObj, context->strObjPool, context->strPool);
+    char* realSrcPath = Focl_normalizePath(FOCL_STROBJ_CSTR(srcpathObj));
+    char* realDstPath = Focl_normalizePath(FOCL_STROBJ_CSTR(dstpathObj));
+    if (Focl_isFileExist(realDstPath) && Focl_isDir(realDstPath))
+    {
+        char* filename = Focl_GetPathLastName(realSrcPath);
+        size_t lenOfFileName = strlen(filename);
+        size_t lenOfDstPath = strlen(realDstPath);
+        char* newPath = realloc(realDstPath, lenOfFileName + lenOfDstPath + 2);
+        if (newPath == NULL)
+        {
+            free(realSrcPath);
+            free(realDstPath);
+            abort();
+        }
+        realDstPath = newPath;
+        realDstPath[lenOfDstPath] = '/';
+        memcpy(realDstPath + lenOfDstPath + 1, filename, lenOfFileName + 1);
+        free(filename);
+    }
+    else if (Focl_isFileExist(realDstPath))
+    {
+        FOCL_ERROBJ_ALLOC(retValue, context, "already had file with the same name.");
+        free(realSrcPath);
+        free(realDstPath);
+        return retValue;
+    }
+    
+    if (rename(realSrcPath, realDstPath) == 0)
+    {
+        retValue = FoclObjectVoid(context->strObjPool, context->strPool);
+    }
+    else
+    {
+        FOCL_ERROBJ_ALLOC(retValue, context, "Cannot move or rename file or directory.");
+    }
+    
+    free(realSrcPath);
+    free(realDstPath);
+    return retValue;
+}
+Focl_Object* sys_cat(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    /* I'm sorry that we have a bad implementation. :( */
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 1)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* retValue;
+    Focl_Object* srcpathObj;
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, srcpathObj, context->strObjPool, context->strPool);
+    char* realSrcPath = Focl_normalizePath(FOCL_STROBJ_CSTR(srcpathObj));
+    if (Focl_isFileExist(realSrcPath))
+    {
+        if (!Focl_isDir(realSrcPath))
+        {
+            FILE* fp = fopen(realSrcPath, "rb");
+            if (fp == NULL)
+            {
+                FOCL_ERROBJ_ALLOC(retValue, context, FOCL_SYSERR_CANNOT_ACCESS_FILE);
+            }
+            else
+            {
+                ptrdiff_t fileSize = Focl_GetFileSize(realSrcPath);
+                if (fileSize == -1)
+                {
+                    fclose(fp);
+                    FOCL_ERROBJ_ALLOC(retValue, context, "cannot get file size.");
+                }
+                else
+                {
+                    char* buffer = malloc(fileSize + 1);
+                    buffer[fileSize] = '\0';
+                    if (buffer == NULL)
+                    {
+                        abort(); /* I have to deal with OOM problem, because string may be very long! */
+                    }
+                    (void)fread(buffer, sizeof(char), fileSize, fp);
+                    retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
+                    FoclStrAssign(FoclObjectGetString(retValue), buffer);
+                    free(buffer);
+                    fclose(fp);
+                }
+            }
+        }
+        else
+        {
+            FOCL_ERROBJ_ALLOC(retValue, context, FOCL_SYSERR_IS_A_DIR);
+        }
+    }
+    else
+    {
+        FOCL_ERROBJ_ALLOC(retValue, context, FOCL_SYSERR_CANNOT_FIND_FILE);
+    }
+    free(realSrcPath);
+    return retValue;
+}
+Focl_Object* sys_edit(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    /* to edit file, you need to have to set a value call FOCL_USING_EDITOR, which attach under the root(global) env. */
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 1)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_String* editorName = FoclStringPoolAlloc(context->strPool);
+    FoclStrAssign(editorName, FOCL_EDITOR_VAR_NAME);
+    Focl_Object* obj = Focl_FindObject(context->globalEnv, context->strPool, editorName);
+    if (obj == FOCL_OBJECT_ERROR)
+    {
+        FoclStringPoolFree(editorName, context->strPool);
+        return FoclObjectError(context->strObjPool, context->strPool, "Cannot find editor, please using \" set "FOCL_EDITOR_VAR_NAME" [Editor Name] first.");
+    }
+    FoclStrAssignStr(editorName, FoclObjectGetString(obj));
+    Focl_Object* fileNameObj;
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, fileNameObj, context->strObjPool, context->strPool);
+    if (!Focl_isNormalFile(FOCL_STROBJ_CSTR(fileNameObj)))
+    {
+        FoclStringPoolFree(editorName, context->strPool);
+        return FoclObjectError(context->strObjPool, context->strPool, "target isn't a normal file.");
+    }
+    char* argv[] = {FoclStrCStr(editorName), FOCL_STROBJ_CSTR(fileNameObj), NULL};
+    Focl_execAndWait(FoclStrCStr(editorName), argv);
+    FoclStringPoolFree(editorName, context->strPool);
+    return FoclObjectVoid(context->strObjPool, context->strPool);
+}
 
 void Focl_RegisterSystemCommand(Focl_Context* context)
 {
@@ -317,4 +462,7 @@ void Focl_RegisterSystemCommand(Focl_Context* context)
     FoclRegisterCommand(context, "sys::name", sys_name);
     FoclRegisterCommand(context, "sys::cp", sys_cp);
     FoclRegisterCommand(context, "sys::rm", sys_rm);
+    FoclRegisterCommand(context, "sys::mv", sys_mv);
+    FoclRegisterCommand(context, "sys::cat", sys_cat);
+    FoclRegisterCommand(context, "sys::edit", sys_edit);
 }
