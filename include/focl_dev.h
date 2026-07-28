@@ -79,6 +79,7 @@ int FoclStrComp(const Focl_String* str, const char* cStr);
 int FoclStrCompStr(const Focl_String* str1, const Focl_String* str2);
 void FoclStrClear(Focl_String* str);
 void FoclStrAppend(Focl_String* str, const char* Cstr);
+void FoclStrReserve(Focl_String* str, size_t newSize_);
 void FoclStrAppendStr(Focl_String* dst, const Focl_String* src);
 void FoclStrAssign(Focl_String* str, const char* cStr);
 void FoclStrAssignStr(Focl_String* dst, const Focl_String* src);
@@ -327,7 +328,7 @@ void FoclIOBufferFlushOut(Focl_IOBuffer* ioBuffer);
 void FoclIOBufferPrintf(Focl_IOBuffer* ioBuffer, const char* fmt, ...);
 void FoclIOBufferPutChar(Focl_IOBuffer* ioBuffer, char c);
 
-Focl_Object* FoclObjectError(Focl_StrObjPool* objPool, Focl_StringPool* strPool, const char* errmsg);
+Focl_Object* FoclObjectError(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, const char* errmsg);
 Focl_Object* FoclObjectVoid(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool);
 Focl_Object* FoclObjectBool(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Bool booleanValue);
 void FoclObjectRetain(Focl_Object* obj);

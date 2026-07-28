@@ -23,9 +23,11 @@ int Focl_mkdir(const char* path); /* no -r */
 char* Focl_realpath(const char* path, char* resolvedPath, size_t bufferSize);
 char* Focl_dirname(const char* path); /* free the return value! */
 int Focl_fileCopy(const char* src, const char* dst);
-char* Focl_GetHomeDirectory();
-char* Focl_normalizePath(const char* path);
+char* Focl_GetHomeDirectory(); /* free the return value! */
+char* Focl_normalizePath(const char* path); /* free the return value! */
 int Focl_remove(const char* path);
 int Focl_copy(const char* src, const char* dst);
+char* Focl_GetPathLastName(const char *path); /* free the return value! */
+int Focl_execAndWait(const char* command, char* const argv[]);
 
 #endif

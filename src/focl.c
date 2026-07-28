@@ -1457,9 +1457,9 @@ void FoclObjectAssign(Focl_Object* dst, Focl_Object* src, Focl_StringPool* strPo
         dst->as = src->as;
     }
 }
-Focl_Object* FoclObjectError(Focl_StrObjPool* objPool, Focl_StringPool* strPool, const char* errmsg)
+Focl_Object* FoclObjectError(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, const char* errmsg)
 {
-    Focl_Object* obj = FoclStringObjPoolAlloc(objPool, strPool, FOCL_OBJ_TYPE_ERROR);
+    Focl_Object* obj = FoclStringObjPoolAlloc(strObjPool, strPool, FOCL_OBJ_TYPE_ERROR);
     FoclStrAssign(FoclObjectGetString(obj), errmsg);
     return obj;
 }
