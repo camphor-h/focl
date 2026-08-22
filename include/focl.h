@@ -1,6 +1,11 @@
 #ifndef FOCL_H
 #define FOCL_H
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 #include <stdio.h>
 
 /* 
@@ -22,5 +27,9 @@ void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_Comman
 void Focl_RegisterBuiltinCommands(Focl_Context* context);
 Focl_Object* Focl_eval(Focl_Context* context, const char* Cstr);
 void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

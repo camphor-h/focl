@@ -1,6 +1,11 @@
 #ifndef FOCL_DEV_H
 #define FOCL_DEV_H
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 #include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
@@ -119,6 +124,7 @@ typedef struct Focl_Vector
 void FoclVectorPushBack(Focl_Vector* vec, void* data);
 void FoclVectorPopBack(Focl_Vector* vec);
 size_t FoclVectorGetSize(Focl_Vector* vec);
+void FoclVectorAppendVector(Focl_Vector* dst, Focl_Vector* src);
 
 typedef struct Focl_PoolBlock
 {
@@ -162,6 +168,7 @@ typedef struct Focl_VectorPool
 
 typedef Focl_Pool Focl_ObjWithNoStrPool;
 typedef Focl_Pool Focl_StrObjPool;
+typedef Focl_Pool Focl_CmpdObjPool;
 
 typedef struct Focl_Object
 {
@@ -170,6 +177,7 @@ typedef struct Focl_Object
     union
     {
         Focl_String* data;
+        Focl_Vector* vec;
         Focl_Obj_Float f;
         Focl_Obj_Int i;
     }as;
@@ -180,8 +188,10 @@ Focl_Obj_Float FoclObjectUnboxFloat(Focl_Object* obj);
 void FoclObjectBoxInt(Focl_Object* obj, Focl_Obj_Int i_);
 void FoclObjectBoxFloat(Focl_Object* obj, Focl_Obj_Float f_);
 bool isFoclObjectUseString(Focl_Object* obj);
+bool isFoclObjectCompound(Focl_Object* obj);
 Focl_String* FoclObjectGetString(Focl_Object* obj);
-void FoclObjectAssign(Focl_Object* dst, Focl_Object* src, Focl_StringPool* strPool);
+Focl_Vector* FoclObjectGetVector(Focl_Object* obj);
+void FoclObjectAssign(Focl_Object* dst, Focl_Object* src, Focl_StringPool* strPool, Focl_VectorPool* vecPool);
 
 typedef size_t (*Focl_HashFunc)(void*);
 typedef bool (*KeyCompareFunc)(void*, void*);
@@ -249,6 +259,7 @@ typedef struct Focl_Context
     Focl_Object* returnValue;
     Focl_ObjWithNoStrPool* objWithNoStrPool;
     Focl_StrObjPool* strObjPool;
+    Focl_CmpdObjPool* cmpdObjPool;
     Focl_IOBuffer* outBuffer; /* currently only have output buffer */
     jmp_buf breakBuf;
     jmp_buf continueBuf;
@@ -282,7 +293,7 @@ typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* obj
 
 #define FOCL_OBJECT_ERROR NULL
 #define FOCL_COMMAND_ERROR NULL
-
+ 
 #define FOCL_OBJ_TYPE_INT 0
 #define FOCL_OBJ_TYPE_FLOAT 1
 #define FOCL_OBJ_TYPE_BOOL 2
@@ -290,7 +301,7 @@ typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* obj
 #define FOCL_OBJ_TYPE_ERROR 4
 #define FOCL_OBJ_TYPE_BYTECODE 5
 #define FOCL_OBJ_TYPE_STR 6
-#define FOCL_OBJ_TYPE_COMPLEX 7
+#define FOCL_OBJ_TYPE_COMPOUND 7
 
 #define FOCL_ERR_INVALID_ARG "Invalid argument"
 #define FOCL_ERR_UNSUPPORTED_ARG_COUNT "Unsupported argument counts"
@@ -304,6 +315,8 @@ typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* obj
 #define FOCL_ERR_NO_EXEC_BLOCK "No block to execute when the if command is true"
 #define FOCL_ERR_UNKNOWN_ARG "Unknown argument"
 #define FOCL_ERR_MUST_BE_BLOCK "For arguments must be blocks"
+#define FOCL_ERR_INDEX_NEGATIVE "Index couldn't be negative"
+#define FOCL_ERR_INDEX_OOL "Index out of length"
 #define _FOCL_STR_HELPER(x) #x
 #define _FOCL_MACRO_AS_STR(x) _FOCL_STR_HELPER(x)
 #define FOCL_ERR_YSNBH "You should not be here! Line: " _FOCL_MACRO_AS_STR(__LINE__)
@@ -341,9 +354,11 @@ char* FoclStrCStr(const Focl_String* str);
 void FoclStringPoolFreeOpDtVoid(void* str, void* strPool);
 Focl_Object* FoclObjWithNoStringPoolAlloc(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Type type_);
 Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Obj_Type type_);
+Focl_Object* FoclCmpdObjPoolAlloc(Focl_CmpdObjPool* cmpdObjPool, Focl_VectorPool* objVecPool);
 Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src);
+Focl_Object* FoclObjectCopy(Focl_Context* context, Focl_Object* src);
 
-void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer);
+void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer, Focl_StringPool* strPool);
 Focl_Object* FoclObjectScan(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Object* obj);
 Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
 void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_CommandFunc func);
@@ -356,12 +371,20 @@ char* Focl_getline(FILE* fp, size_t* len);
     obj = FoclObjVecAt(objVec, idx); \
     if (obj->type != dsttype) \
     { \
-        return FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG);\
+        return FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG); \
+    } \
+
+#define FOCL_OBJ_VEC_AT_NOT_ERR(objVec, idx, obj, strObjPool, strPool) \
+    obj = FoclObjVecAt(objVec, idx); \
+    if (obj->type == FOCL_OBJ_TYPE_ERROR) \
+    { \
+        return FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG); \
     } \
 
 #define FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_INT, strObjPool, strPool)
 #define FOCL_OBJ_VEC_AT_AS_FLOAT_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_FLOAT, strObjPool, strPool)
 #define FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_STR, strObjPool, strPool)
+#define FOCL_OBJ_VEC_AT_AS_COMPOUND_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_COMPOUND, strObjPool, strPool)
 
 #define FOCL_ERROBJ_ALLOC(errobj, ctx, content) \
     errobj = FoclStringObjPoolAlloc(ctx->strObjPool, ctx->strPool, FOCL_OBJ_TYPE_ERROR); \
@@ -372,5 +395,9 @@ char* Focl_getline(FILE* fp, size_t* len);
     FoclStrAssign(FoclObjectGetString(strobj), content) \
 
 #define FOCL_STROBJ_CSTR(obj) FoclStrCStr(FoclObjectGetString(obj))
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

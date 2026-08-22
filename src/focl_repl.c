@@ -92,7 +92,7 @@ int Focl_REPL(Focl_Context* ctx)
         }
         else if (result->type != FOCL_OBJ_TYPE_VOID)
         {
-            FoclObjectPrint(result, ctx->outBuffer);
+            FoclObjectPrint(result, ctx->outBuffer, ctx->strPool);
             FoclIOBufferPutChar(ctx->outBuffer, '\n');
         }
 

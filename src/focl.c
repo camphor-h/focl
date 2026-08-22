@@ -40,6 +40,7 @@
 
 void FoclObjWithNoStringPoolFree(Focl_Object* obj, Focl_ObjWithNoStrPool* objPool);
 void FoclStringObjPoolFree(Focl_Object* obj, Focl_StrObjPool* objPool);
+void FoclCmpdObjPoolFree(Focl_Object* obj, Focl_CmpdObjPool* cmpdObjPool);
 
 void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_StringView* src);
 
@@ -921,6 +922,44 @@ size_t FoclVectorGetSize(Focl_Vector* vec)
 {
     return (vec->size);
 }
+void FoclVectorAssignVector(Focl_Vector* dst, Focl_Vector* src)
+{
+    if (src->size >= dst->capacity)
+    {
+        FoclVectorReserve(dst, src->size);
+    }
+    memcpy(dst->data, src->data, src->itemSize * src->size);
+    dst->size = src->size;
+}
+void FoclObjVectorDeepCopy(Focl_Vector* dst, Focl_Vector* src)
+{
+    FoclVectorClear(dst);
+    size_t srcSize = FoclVectorGetSize(src);
+    for (size_t i = 0; i < srcSize; i++)
+    {
+        Focl_Object* srcObj = FoclObjVecAt(src, i);
+        FoclObjectRetain(srcObj);
+        FoclVectorPushBack(dst, &srcObj);
+    }
+}
+void FoclVectorAppendVector(Focl_Vector* dst, Focl_Vector* src)
+{
+    if (src->size == 0)
+    {
+        return;
+    }
+    
+    size_t totalSize = dst->size + src->size;
+    
+    while (totalSize >= dst->capacity)
+    {
+        FoclVectorDoubleReserve(dst);
+    }
+    
+    memcpy((uint8_t*)dst->data + (dst->size * dst->itemSize), src->data, src->size * src->itemSize);
+    
+    dst->size = totalSize;
+}
 void freeFoclVector(Focl_Vector* vec, Focl_TypeOpDt* opDt) /* If NULL, won't destruct item. */
 {
     if (opDt != NULL)
@@ -1395,6 +1434,10 @@ Focl_String* FoclObjectGetString(Focl_Object* obj)
 {
     return (obj->as.data);
 }
+Focl_Vector* FoclObjectGetVector(Focl_Object* obj)
+{
+    return (obj->as.vec);
+}
 void FoclObjectBoxInt(Focl_Object* obj, Focl_Obj_Int i_)
 {
     obj->as.i = i_;
@@ -1405,7 +1448,11 @@ void FoclObjectBoxFloat(Focl_Object* obj, Focl_Obj_Float f_)
 }
 bool isFoclObjectUseString(Focl_Object* obj)
 {
-    return (obj->type >= FOCL_OBJ_TYPE_VOID);
+    return (obj->type >= FOCL_OBJ_TYPE_VOID && obj->type <= FOCL_OBJ_TYPE_STR);
+}
+bool isFoclObjectCompound(Focl_Object* obj)
+{
+    return (obj->type == FOCL_OBJ_TYPE_COMPOUND);
 }
 
 Focl_Obj_Int Focl_StrToInt_View(const Focl_StringView* strView)
@@ -1442,7 +1489,7 @@ Focl_Object* createStringFoclObject(Focl_Obj_Type type_, Focl_StringPool* strPoo
     obj->as.data = FoclStringPoolAlloc(strPool);
     return obj;
 }
-void FoclObjectAssign(Focl_Object* dst, Focl_Object* src, Focl_StringPool* strPool)
+void FoclObjectAssign(Focl_Object* dst, Focl_Object* src, Focl_StringPool* strPool, Focl_VectorPool* vecPool)
 {
     /* This is a strong type language! You should do a type check before every assign! */
 
@@ -1451,6 +1498,12 @@ void FoclObjectAssign(Focl_Object* dst, Focl_Object* src, Focl_StringPool* strPo
         FoclStringPoolFree(dst->as.data, strPool);
         dst->as.data = FoclStringPoolAlloc(strPool);
         FoclStrAssignStr(dst->as.data, src->as.data);
+    }
+    else if (isFoclObjectCompound(src))
+    {
+        FoclVectorPoolFree(dst->as.vec, vecPool);
+        dst->as.vec = FoclVectorPoolAlloc(vecPool);
+        FoclObjVectorDeepCopy(dst->as.vec, src->as.vec);
     }
     else
     {
@@ -1520,15 +1573,18 @@ Focl_Object* FoclObjectBool(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Bool boolea
     obj->as.i = booleanValue;
     return obj;
 }
-void freeFoclObject(Focl_Object* obj, Focl_StringPool* strPool)
+void freeFoclObject(Focl_Object* obj, Focl_StringPool* strPool, Focl_VectorPool* vecPool)
 {
     if (isFoclObjectUseString(obj))
     {
         FoclStringPoolFree(obj->as.data, strPool);
     }
+    else if (isFoclObjectCompound(obj))
+    {
+        FoclVectorPoolFree(obj->as.vec, vecPool);
+    }
     free(obj);
 }
-
 void FoclObjectRetain(Focl_Object* obj)
 {
     if (obj != NULL)
@@ -1541,15 +1597,84 @@ void FoclObjectRelease(Focl_Object* obj, Focl_Context* context)
     obj->refCount--;
     if (obj->refCount == 0)
     {
-        if (!isFoclObjectUseString(obj))
-        {
-            FoclObjWithNoStringPoolFree(obj, context->objWithNoStrPool);
-        }
-        else
+        if (isFoclObjectUseString(obj))
         {
             FoclStringObjPoolFree(obj, context->strObjPool);
         }
+        else if (isFoclObjectCompound(obj))
+        {
+            FoclCmpdObjPoolFree(obj, context->cmpdObjPool);
+        }
+        else
+        {
+            FoclObjWithNoStringPoolFree(obj, context->objWithNoStrPool);
+        }
     }
+}
+Focl_String* FoclCmpdObjStringize(Focl_Object* cmpdObj, Focl_StringPool* strPool)
+{
+    size_t vecSize = FoclVectorGetSize(cmpdObj->as.vec);
+    size_t curlength;
+    Focl_String* dstStr = FoclStringPoolAlloc(strPool);
+    Focl_String* tempStr;
+    Focl_Object* obj;
+    for (size_t i = 0; i < vecSize; i++)
+    {
+        obj = FoclObjVecAt(FoclObjectGetVector(cmpdObj), i);
+        switch (obj->type)
+        {
+            case FOCL_OBJ_TYPE_INT:
+                tempStr = FoclStringPoolAlloc(strPool);
+                FoclStrReserve(tempStr, FOCL_INT_TO_STR_TMP_BUFFER_SIZE);
+                curlength = sprintf(tempStr->data, "%" FOCL_FORMAT_INT, obj->as.i);
+                tempStr->length = curlength;
+                FoclStrAppendStr(dstStr, tempStr);
+                FoclStringPoolFree(tempStr, strPool);
+                break;
+            case FOCL_OBJ_TYPE_FLOAT:
+                tempStr = FoclStringPoolAlloc(strPool);
+                FoclStrReserve(tempStr, FOCL_FLOAT_TO_STR_TMP_BUFFER_SIZE);
+                curlength = sprintf(tempStr->data, "%" FOCL_FORMAT_FLOAT, obj->as.f);
+                tempStr->length = curlength;
+                FoclStrAppendStr(dstStr, tempStr);
+                FoclStringPoolFree(tempStr, strPool);
+                break;
+            case FOCL_OBJ_TYPE_BOOL:
+                tempStr = FoclStringPoolAlloc(strPool);
+                FoclStrReserve(tempStr, sizeof("false"));
+                curlength = sprintf(tempStr->data, "%s", (obj->as.i == FOCL_OBJ_TRUE) ? "true" : "false");
+                tempStr->length = curlength;
+                FoclStrAppendStr(dstStr, tempStr);
+                FoclStringPoolFree(tempStr, strPool);
+                break;
+            case FOCL_OBJ_TYPE_VOID:
+                /* Do nothing */
+                break;
+            case FOCL_OBJ_TYPE_STR:
+                FoclStrAppendStr(dstStr, FoclObjectGetString(obj));
+                break;
+            case FOCL_OBJ_TYPE_COMPOUND:
+                if (obj != cmpdObj)
+                {
+                    tempStr = FoclCmpdObjStringize(obj, strPool);
+                    FoclStrAppendStr(dstStr, tempStr);
+                    FoclStringPoolFree(tempStr, strPool);
+                }
+                else
+                {
+                    FoclStrAppend(dstStr, "*self*");
+                }
+                break;
+            default:
+                printf(FOCL_ERR_YSNBH);
+                break;
+        }
+        if (i < vecSize - 1)
+        {
+            FoclStrAppend(dstStr, " ");
+        }
+    }
+    return dstStr;
 }
 
 void FoclObjectReleaseOpDtVoid(void* obj, void* ctx)
@@ -1591,6 +1716,42 @@ void FoclStringObjectOpClVoid(void* obj, void* ctx)
     FoclStringObjectOpCl(obj);
 }
 
+void FoclCmpdObjectOpCt(Focl_Object* obj, Focl_VectorPool* objVecPool)
+{
+    obj->as.vec = FoclVectorPoolAlloc(objVecPool);
+}
+void FoclCmpdObjectOpCtVoid(void* obj, void* objVecPool)
+{
+    FoclCmpdObjectOpCt(obj, objVecPool);
+}
+void FoclCmpdObjectOpDt(Focl_Object* obj, Focl_Context* context)
+{
+    size_t vecSize = FoclVectorGetSize(obj->as.vec);
+    for (size_t i = 0; i < vecSize; i++)
+    {
+        Focl_Object* curObj = FoclObjVecAt(FoclObjectGetVector(obj), i);
+        if (curObj != obj)
+        {
+            FoclObjectRelease(curObj, context);
+        }
+    }
+    FoclVectorPoolFree(obj->as.vec, context->objVecPool);
+}
+void FoclCmpdObjectOpDtVoid(void* obj, void* context)
+{
+    FoclCmpdObjectOpDt(obj, context);
+}
+void FoclCmpdObjectOpCl(Focl_Object* obj)
+{
+    obj->refCount = 1;
+    FoclVectorClear(obj->as.vec);
+}
+void FoclCmpdObjectOpClVoid(void* obj, void* ctx)
+{
+    (void)ctx;
+    FoclCmpdObjectOpCl(obj);
+}
+
 /* OBJ POOL */
 
 Focl_ObjWithNoStrPool* createFoclObjWithNoStringPool()
@@ -1602,6 +1763,12 @@ Focl_StrObjPool* createFoclStringObjPool(Focl_StringPool* strPool)
     Focl_TypeOpCt opCt = {.ctx = strPool, .func = FoclStringObjectOpCtVoid};
     return createFoclPool(sizeof(Focl_Object), FOCL_OBJ_POOL_ITEM_PER_BLOCK, FOCL_OBJ_POOL_BLOCK_COUNT_INIT, &opCt);
 }
+Focl_CmpdObjPool* createFoclCmpdObjPool(Focl_VectorPool* objVecPool)
+{
+    Focl_TypeOpCt opCt = {.ctx = objVecPool, .func = FoclCmpdObjectOpCtVoid};
+    return createFoclPool(sizeof(Focl_Object), FOCL_OBJ_POOL_ITEM_PER_BLOCK, FOCL_OBJ_POOL_BLOCK_COUNT_INIT, &opCt);
+}
+
 Focl_Object* FoclObjWithNoStringPoolAlloc(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Type type_)
 {
     Focl_TypeOpCl opCl = {.ctx = NULL, .func = FoclObjectWithNoStringOpClVoid};
@@ -1618,6 +1785,14 @@ Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* strObjPool, Focl_StringPool
     obj->type = type_;
     return obj;
 }
+Focl_Object* FoclCmpdObjPoolAlloc(Focl_CmpdObjPool* cmpdObjPool, Focl_VectorPool* objVecPool)
+{
+    Focl_TypeOpCt opCt = {.ctx = objVecPool, .func = FoclCmpdObjectOpCtVoid};
+    Focl_TypeOpCl opCl = {.ctx = NULL, .func = FoclCmpdObjectOpClVoid};
+    Focl_Object* obj = (Focl_Object*)FoclPoolAllocEx(cmpdObjPool, &opCt, &opCl);
+    obj->type = FOCL_OBJ_TYPE_COMPOUND;
+    return obj;
+}
 
 Focl_Object* FoclObjPoolWithNoStringAllocAssign(Focl_StrObjPool* objPool, Focl_Object* src)
 {
@@ -1631,6 +1806,12 @@ Focl_Object* FoclStringObjPoolAllocAssign(Focl_StrObjPool* objPool, Focl_StringP
     FoclStrAssignStr(FoclObjectGetString(obj), FoclObjectGetString(src));
     return obj;
 }
+Focl_Object* FoclCmpdObjPoolAllocAssign(Focl_CmpdObjPool* cmpdObjPool, Focl_VectorPool* objVecPool, Focl_Object* src)
+{
+    Focl_Object* obj = FoclCmpdObjPoolAlloc(cmpdObjPool, objVecPool);
+    FoclVectorAssignVector(obj->as.vec, src->as.vec);
+    return obj;
+}
 Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src)
 {
     /* Universal pool alloc assign function */
@@ -1638,18 +1819,31 @@ Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src)
     {
         return FoclStringObjPoolAllocAssign(context->strObjPool, context->strPool, src);
     }
+    else if (isFoclObjectCompound(src))
+    {
+        return FoclCmpdObjPoolAllocAssign(context->cmpdObjPool, context->objVecPool, src);
+    }
     else
     {
         return FoclObjPoolWithNoStringAllocAssign(context->objWithNoStrPool, src);
     }
 }
+Focl_Object* FoclObjectCopy(Focl_Context* context, Focl_Object* src)
+{
+    /* Just a alias */
+    return FoclObjPoolAllocAssign(context, src);
+}
 void FoclObjWithNoStringPoolFree(Focl_Object* obj, Focl_ObjWithNoStrPool* objPool)
 {
     FoclPoolFree(obj, objPool);
 }
-void FoclStringObjPoolFree(Focl_Object* obj, Focl_StrObjPool* objPool)
+void FoclStringObjPoolFree(Focl_Object* obj, Focl_StrObjPool* strObjPool)
 {
-    FoclPoolFree(obj, objPool);
+    FoclPoolFree(obj, strObjPool);
+}
+void FoclCmpdObjPoolFree(Focl_Object* obj, Focl_CmpdObjPool* cmpdObjPool)
+{
+    FoclPoolFree(obj, cmpdObjPool);
 }
 void freeFoclObjWithNoStringPool(Focl_ObjWithNoStrPool* objPool)
 {
@@ -1659,6 +1853,11 @@ void freeFoclStringObjPool(Focl_StrObjPool* objPool, Focl_StringPool* strPool)
 {
     Focl_TypeOpDt opDt = {.ctx = strPool, .func = FoclStringObjectOpDtVoid};
     freeFoclPool(objPool, &opDt);
+}
+void freeFoclCmpdObjPool(Focl_Context* ctx)
+{
+    Focl_TypeOpDt opDt = {.ctx = ctx, .func = FoclCmpdObjectOpDtVoid};
+    freeFoclPool(ctx->cmpdObjPool, &opDt);
 }
 
 /* OBJ POOL */
@@ -1815,6 +2014,7 @@ Focl_Context* createFoclContext(FILE* outpotfPtr)
     context->strVecPool = createFoclVectorPool(sizeof(Focl_String*));
     context->objWithNoStrPool = createFoclObjWithNoStringPool();
     context->strObjPool = createFoclStringObjPool(context->strPool);
+    context->cmpdObjPool = createFoclCmpdObjPool(context->objVecPool);
     context->outBuffer = createFoclIOBuffer(outpotfPtr, FOCL_IOBUFFER_DEFAULT_SIZE);
     context->globalEnv = createFoclEnvironment(NULL, context->strPool, context->strVecPool, NULL);
     context->curEnv = context->globalEnv;
@@ -1837,6 +2037,7 @@ void freeFoclContext(Focl_Context* context)
         cEnv = pEnv;
     }
     while (cEnv != NULL);
+    freeFoclCmpdObjPool(context);
     freeFoclStringObjPool(context->strObjPool, context->strPool);
     freeFoclObjWithNoStringPool(context->objWithNoStrPool);
     freeFoclStringPool(context->strPool);
@@ -2643,6 +2844,23 @@ void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_String
                             dst->data[dst->length] = '\0';
                         }
                     }
+                    else if (isFoclObjectCompound(object))
+                    {
+                        Focl_String* cmpdStr = FoclCmpdObjStringize(object, context->strPool);
+                        if (cmpdStr != NULL && cmpdStr->length > 0)
+                        {
+                            size_t curLen = dst->length;
+                            size_t needed = curLen + cmpdStr->length;
+                            while (needed >= dst->capacity)
+                            {
+                                FoclStrReserve(dst, (dst->capacity == 0) ? 16 : dst->capacity * 2);
+                            }
+                            memcpy(dst->data + curLen, cmpdStr->data, cmpdStr->length);
+                            dst->length = curLen + cmpdStr->length;
+                            dst->data[dst->length] = '\0';
+                        }
+                        FoclStringPoolFree(cmpdStr, context->strPool);
+                    }
                     else
                     {
                         Focl_String tempStr;
@@ -2661,6 +2879,7 @@ void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_String
                                 tempStr.length = sprintf(tempStr.data, "%s", (object->as.i == FOCL_OBJ_TRUE) ? "true" : "false");
                                 break;
                             default:
+                                FoclStringOpCt(&tempStr, FOCL_FLOAT_TO_STR_TMP_BUFFER_SIZE);
                                 printf(FOCL_ERR_YSNBH);
                                 break;
                         }
@@ -2715,9 +2934,9 @@ void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_String
                 Focl_StringView cmdView = {(size_t)(cmdEnd - cmdStart), (char*)cmdStart};
                 Focl_Object* cmdResult = Focl_parseCommand(context, &cmdView);
 
-                if (cmdResult != NULL)
+                if (cmdResult != NULL && cmdResult->type != FOCL_OBJ_TYPE_ERROR)
                 {
-                    if (cmdResult->type != FOCL_OBJ_TYPE_ERROR && isFoclObjectUseString(cmdResult))
+                    if (isFoclObjectUseString(cmdResult))
                     {
                         Focl_String* outStr = FoclObjectGetString(cmdResult);
                         if (outStr != NULL && outStr->data != NULL && outStr->length > 0)
@@ -2732,6 +2951,23 @@ void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_String
                             dst->length = curLen + outStr->length;
                             dst->data[dst->length] = '\0';
                         }
+                    }
+                    else if (isFoclObjectCompound(cmdResult))
+                    {
+                        Focl_String* cmpdStr = FoclCmpdObjStringize(cmdResult, context->strPool);
+                        if (cmpdStr != NULL && cmpdStr->length > 0)
+                        {
+                            size_t curLen = dst->length;
+                            size_t needed = curLen + cmpdStr->length;
+                            while (needed >= dst->capacity)
+                            {
+                                FoclStrReserve(dst, (dst->capacity == 0) ? 16 : dst->capacity * 2);
+                            }
+                            memcpy(dst->data + curLen, cmpdStr->data, cmpdStr->length);
+                            dst->length = curLen + cmpdStr->length;
+                            dst->data[dst->length] = '\0';
+                        }
+                        FoclStringPoolFree(cmpdStr, context->strPool);
                     }
                     FoclObjectRelease(cmdResult, context);
                 }
@@ -3098,7 +3334,7 @@ void FoclIOBufferPutChar(Focl_IOBuffer* ioBuffer, char c)
     }
 }
 
-void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer)
+void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer, Focl_StringPool* strPool)
 {
     switch (obj->type)
     {
@@ -3116,6 +3352,11 @@ void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer)
             FoclIOBufferPrintf(oBuffer, "%s", FoclStrCStr(obj->as.data));
             break;
         case FOCL_OBJ_TYPE_VOID:
+            break;
+        case FOCL_OBJ_TYPE_COMPOUND:
+            Focl_String* cmpdStr = FoclCmpdObjStringize(obj, strPool);
+            FoclIOBufferPrintf(oBuffer, "%s", FoclStrCStr(cmpdStr));
+            FoclStringPoolFree(cmpdStr, strPool);
             break;
         default:
             printf(FOCL_ERR_YSNBH);
