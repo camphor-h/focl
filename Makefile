@@ -3,28 +3,35 @@ CFLAGS = -Wall -Wextra
 INCLUDES = -I./include
 PACK_CMD = -DFOCL_REGISTER_UTILS -DFOCL_REGISTER_MATH -DFOCL_REGISTER_SYS
 TARGET = focl
+TARGET_C = foclc
+LIBRARY = libfocl.a
 
 BUILD_DIR = build
 OBJ_DIR = $(BUILD_DIR)/obj
+LIB_DIR = $(BUILD_DIR)/lib
 
-SRC = src/focl.c \
-      src/focl_main.c \
-      src/focl_register.c \
-      src/focl_repl.c \
-      src/system/sys_lean.c \
-      src/utils/focl_math.c \
-      src/utils/focl_sys.c \
-      src/utils/focl_utils.c
+SRC_COMMON = src/focl.c \
+             src/focl_register.c \
+             src/focl_repl.c \
+             src/system/sys_lean.c \
+             src/utils/focl_math.c \
+             src/utils/focl_sys.c \
+             src/utils/focl_utils.c
+
+SRC_FOCL = src/focl_main.c
+SRC_FOCLC = src/foclc_main.c
 
 ifneq ($(OS),Windows_NT)
-SRC += src/linenoise/linenoise.c
+SRC_COMMON += src/linenoise/linenoise.c
 endif
 
-OBJ = $(addprefix $(OBJ_DIR)/, $(notdir $(SRC:.c=.o)))
+OBJ_COMMON = $(addprefix $(OBJ_DIR)/, $(notdir $(SRC_COMMON:.c=.o)))
+OBJ_FOCL = $(OBJ_DIR)/focl_main.o
+OBJ_FOCLC = $(OBJ_DIR)/foclc_main.o
 
 .DEFAULT_GOAL := release
 
-$(BUILD_DIR) $(OBJ_DIR):
+$(BUILD_DIR) $(OBJ_DIR) $(LIB_DIR):
 	mkdir -p $@
 
 vpath %.c src src/system src/utils src/linenoise
@@ -32,28 +39,39 @@ vpath %.c src src/system src/utils src/linenoise
 $(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -MMD -MP $(INCLUDES) $(PACK_CMD) -c $< -o $@
 
-$(BUILD_DIR)/$(TARGET): $(OBJ) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(OBJ) -lm -o $@
+$(LIB_DIR)/$(LIBRARY): $(OBJ_COMMON) | $(LIB_DIR)
+	ar rcs $@ $(OBJ_COMMON)
+
+$(BUILD_DIR)/$(TARGET): $(OBJ_COMMON) $(OBJ_FOCL) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(OBJ_COMMON) $(OBJ_FOCL) -lm -o $@
+
+$(BUILD_DIR)/$(TARGET_C): $(OBJ_COMMON) $(OBJ_FOCLC) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(OBJ_COMMON) $(OBJ_FOCLC) -lm -o $@
 
 release: CFLAGS += -O2 -flto
-release: $(BUILD_DIR)/$(TARGET)
-	@cp $< $(TARGET)
+release: $(BUILD_DIR)/$(TARGET) $(BUILD_DIR)/$(TARGET_C) $(LIB_DIR)/$(LIBRARY)
+	@cp $(BUILD_DIR)/$(TARGET) .
+	@cp $(BUILD_DIR)/$(TARGET_C) .
+	@cp $(LIB_DIR)/$(LIBRARY) .
 
-debug: CFLAGS += -g
-debug: $(BUILD_DIR)/$(TARGET)
-	@cp $< $(TARGET)
+debug: CFLAGS += -g -DINIT_MALLOC
+debug: $(BUILD_DIR)/$(TARGET) $(BUILD_DIR)/$(TARGET_C) $(LIB_DIR)/$(LIBRARY)
+	@cp $(BUILD_DIR)/$(TARGET) .
+	@cp $(BUILD_DIR)/$(TARGET_C) .
+	@cp $(LIB_DIR)/$(LIBRARY) .
 
 install: release
 	@if [ "$(OS)" = "Windows_NT" ]; then \
 		echo "Error: install is not supported on Windows"; \
 		exit 1; \
 	fi
-	@echo "Installing $(TARGET) to /usr/local/bin"
+	@echo "Installing $(TARGET) and $(TARGET_C) to /usr/local/bin"
 	@sudo cp $(TARGET) /usr/local/bin/
+	@sudo cp $(TARGET_C) /usr/local/bin/
 	@echo "Installation complete"
 
 clean:
-	rm -rf $(BUILD_DIR) $(TARGET)
+	rm -rf $(BUILD_DIR) $(TARGET) $(TARGET_C) $(LIBRARY)
 
 -include $(OBJ_DIR)/*.d
 

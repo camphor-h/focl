@@ -36,6 +36,7 @@
 #endif
 
 char* Focl_strdup(const char* src);
+void* Focl_malloc(size_t size);
 
 #ifdef _WIN32
 int access(const char* filename, int accessMode)
@@ -335,7 +336,7 @@ char* Focl_GetHomeDirectory()
     HRESULT result = SHGetFolderPathA(NULL, CSIDL_PROFILE, NULL, 0, path);
     if (SUCCEEDED(result))
     {
-        home = (char*)malloc(strlen(path) + 1);
+        home = (char*)Focl_malloc(strlen(path) + 1);
         if (home)
         {
             strcpy(home, path);
@@ -345,7 +346,7 @@ char* Focl_GetHomeDirectory()
     home = getenv("HOME");
     if (home)
     {
-        char* temp = (char*)malloc(strlen(home) + 1);
+        char* temp = (char*)Focl_malloc(strlen(home) + 1);
         if (temp)
         {
             strcpy(temp, home);
@@ -355,7 +356,7 @@ char* Focl_GetHomeDirectory()
     struct passwd* passwordEntry = getpwuid(getuid());
     if (passwordEntry && passwordEntry->pw_dir)
     {
-        home = (char*)malloc(strlen(passwordEntry->pw_dir) + 1);
+        home = (char*)Focl_malloc(strlen(passwordEntry->pw_dir) + 1);
         if (home)
         {
             strcpy(home, passwordEntry->pw_dir);
@@ -678,7 +679,7 @@ char* Focl_normalizePath(const char* path)
         return NULL;
     }
 
-    char* buffer = (char*)malloc(PATH_MAX);
+    char* buffer = (char*)Focl_malloc(PATH_MAX);
     if (!buffer)
     {
         return NULL;
@@ -724,6 +725,7 @@ int Focl_copy(const char* src, const char* dst)
 int Focl_execAndWait(const char* command, char* const argv[])
 {
     #ifdef _WIN32
+        (void)command;
         STARTUPINFO si = {0};
         PROCESS_INFORMATION pi = {0};
         char cmdline[4096] = {0};
@@ -783,4 +785,28 @@ int Focl_execAndWait(const char* command, char* const argv[])
             return -1;
         }
     #endif
+}
+
+char* Focl_GetFileNameWithoutExt(const char* path)
+{
+    char* fullname = Focl_GetPathLastName(path);
+    if (!fullname)
+    {
+        return NULL;
+    }
+    
+    char* dot = strrchr(fullname, '.');
+    if (dot)
+    {
+        if (dot == fullname || (dot > fullname && *(dot - 1) == '.'))
+        {
+            return fullname;
+        }
+        if (*(dot + 1) != '\0')
+        {
+            *dot = '\0';
+        }
+    }
+    
+    return fullname;
 }

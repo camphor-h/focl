@@ -48,6 +48,51 @@ Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* s
 
 char* Focl_getline(FILE* fp, size_t* len);
 
+#ifdef INIT_MALLOC
+size_t malloced = 0;
+size_t realloced = 0;
+#endif
+
+void* Focl_malloc(size_t size)
+{
+#ifdef INIT_MALLOC
+    malloced += size;
+#endif
+    void* ptr = malloc(size);
+    if (ptr == NULL && size != 0)
+    {
+        fprintf(stderr, "memory exhausted\n");
+        exit(EXIT_FAILURE);
+    }
+    return ptr;
+}
+void* Focl_realloc(void* ptr, size_t size)
+{
+#ifdef INIT_MALLOC
+    realloced += size;
+#endif
+    void* newPtr = realloc(ptr, size);
+    if (newPtr == NULL && size != 0)
+    {
+        fprintf(stderr, "memory exhausted\n");
+        exit(EXIT_FAILURE);
+    }
+    return newPtr;
+}
+void* Focl_calloc(size_t itemCount, size_t itemSize)
+{
+#ifdef INIT_MALLOC
+    malloced += itemCount * itemSize;
+#endif
+    void* ptr = calloc(itemCount, itemSize);
+    if (ptr == NULL && itemCount != 0)
+    {
+        fprintf(stderr, "memory exhausted\n");
+        exit(EXIT_FAILURE);
+    }
+    return ptr;
+}
+
 /* STRING */
 
 int32_t getUtf8CodePointLength(uint8_t firstByte)
@@ -93,7 +138,7 @@ int32_t getUtf8CodePoint(const char* bytes)
 char* Focl_strdup(const char* src)
 {
     size_t len = strlen(src);
-    char* s = malloc(len + 1);
+    char* s = Focl_malloc(len + 1);
     memcpy(s, src, len);
     s[len] = '\0';
     return s;
@@ -101,8 +146,8 @@ char* Focl_strdup(const char* src)
 
 Focl_String* createFoclString(size_t iCapacity)
 {
-    Focl_String* str = (Focl_String*)malloc(sizeof(Focl_String));
-    str->data = malloc(sizeof(char) * iCapacity);
+    Focl_String* str = (Focl_String*)Focl_malloc(sizeof(Focl_String));
+    str->data = Focl_malloc(sizeof(char) * iCapacity);
     str->capacity = iCapacity;
     str->length = 0;
     str->data[iCapacity - 1] = '\0';
@@ -112,8 +157,8 @@ Focl_String* createFoclStringWithCStr(const char* Cstr)
 {
     size_t len = strlen(Cstr);
     size_t capacity = len + 1;
-    Focl_String* str = (Focl_String*)malloc(sizeof(Focl_String));
-    str->data = malloc(sizeof(char) * (capacity));
+    Focl_String* str = (Focl_String*)Focl_malloc(sizeof(Focl_String));
+    str->data = Focl_malloc(sizeof(char) * (capacity));
     strcpy(str->data, Cstr);
     str->length = len;
     str->capacity = capacity;
@@ -123,8 +168,8 @@ Focl_String* createFoclStringWithView(const Focl_StringView* strView)
 {
     size_t len = strView->len;
     size_t capacity = strView->len + 1;
-    Focl_String* str = (Focl_String*)malloc(sizeof(Focl_String));
-    str->data = malloc(sizeof(char) * (capacity));
+    Focl_String* str = (Focl_String*)Focl_malloc(sizeof(Focl_String));
+    str->data = Focl_malloc(sizeof(char) * (capacity));
     memcpy(str->data, strView->strPtr, len);
     str->data[len] = '\0';
     str->length = len;
@@ -152,7 +197,7 @@ void FoclStrAssign(Focl_String* str, const char* cStr)
     if (newLen >= str->capacity)
     {
         str->capacity = newLen + 1;
-        str->data = (char*)realloc(str->data, str->capacity);
+        str->data = (char*)Focl_realloc(str->data, str->capacity);
         strcpy(str->data, cStr);
         str->length = newLen;
     }
@@ -176,12 +221,12 @@ void FoclStrReserve(Focl_String* str, size_t newSize_)
     {
         return;
     }
-    str->data = (char*)realloc(str->data, sizeof(char) * newSize_);
+    str->data = (char*)Focl_realloc(str->data, sizeof(char) * newSize_);
     str->capacity = newSize_;
 }
 void FoclStrReserveWithoutCheck(Focl_String* str, size_t newSize_)
 {
-    str->data = (char*)realloc(str->data, sizeof(char) * newSize_);
+    str->data = (char*)Focl_realloc(str->data, sizeof(char) * newSize_);
     str->capacity = newSize_;
 }
 void FoclStrAssignView(Focl_String* dst, const Focl_StringView* view)
@@ -307,7 +352,7 @@ void freeFoclString(Focl_String* str)
 
 void FoclStringOpCt(Focl_String* str, size_t iCapacity)
 {
-    str->data = malloc(sizeof(char) * iCapacity);
+    str->data = Focl_malloc(sizeof(char) * iCapacity);
     str->capacity = iCapacity;
     str->length = 0;
     str->data[iCapacity - 1] = '\0';
@@ -871,16 +916,16 @@ bool StrKeyCompare(void* a, void* b)
 
 Focl_Vector* createFoclVector(size_t itemSize_, size_t iCapacity)
 {
-    Focl_Vector* vec = (Focl_Vector*)malloc(sizeof(Focl_Vector));
+    Focl_Vector* vec = (Focl_Vector*)Focl_malloc(sizeof(Focl_Vector));
     vec->capacity = iCapacity;
     vec->size = 0;
     vec->itemSize = itemSize_;
-    vec->data = malloc(sizeof(char) * itemSize_ * iCapacity);
+    vec->data = Focl_malloc(sizeof(char) * itemSize_ * iCapacity);
     return vec;
 }
 void FoclVectorReserve(Focl_Vector* vec, size_t newCapacity_)
 {
-    vec->data = realloc(vec->data, vec->itemSize * newCapacity_);
+    vec->data = Focl_realloc(vec->data, vec->itemSize * newCapacity_);
     vec->capacity = newCapacity_;
 }
 void FoclVectorDoubleReserve(Focl_Vector* vec)
@@ -982,7 +1027,7 @@ typedef struct FoclVectorOpCtCtx
 }FoclVectorOpCtCtx;
 void FoclVectorOpCt(Focl_Vector* vec, size_t itemSize_, size_t iCapacity)
 {
-    vec->data = malloc(sizeof(char) * itemSize_ * iCapacity);
+    vec->data = Focl_malloc(sizeof(char) * itemSize_ * iCapacity);
     vec->capacity = iCapacity;
     vec->size = 0;
     vec->itemSize = itemSize_;
@@ -1021,7 +1066,7 @@ void FoclVectorOpClVoid(void* vec, void* ctx)
 
 Focl_HashTableUnit* createFoclHashTableUnit(void* key_, void* value_)
 {
-    Focl_HashTableUnit* unit = (Focl_HashTableUnit*)malloc(sizeof(Focl_HashTableUnit));
+    Focl_HashTableUnit* unit = (Focl_HashTableUnit*)Focl_malloc(sizeof(Focl_HashTableUnit));
     unit->key = key_;
     unit->value = value_;
     unit->next = NULL;
@@ -1042,8 +1087,8 @@ void freeFoclHashTableUnit(Focl_HashTableUnit* unit, Focl_KeyOpDt* keyOpDt, Focl
 
 Focl_HashTable* createFoclHashTable(size_t iCapacity, float loadFactor_, Focl_HashFunc hashFunc_)
 {
-    Focl_HashTable* table = (Focl_HashTable*)malloc(sizeof(Focl_HashTable));
-    table->buckets = (Focl_HashTableUnit**)calloc(iCapacity, sizeof(Focl_HashTableUnit*));
+    Focl_HashTable* table = (Focl_HashTable*)Focl_malloc(sizeof(Focl_HashTable));
+    table->buckets = (Focl_HashTableUnit**)Focl_calloc(iCapacity, sizeof(Focl_HashTableUnit*));
     table->capacity = iCapacity;
     table->size = 0;
     table->loadFactor = loadFactor_;
@@ -1056,7 +1101,7 @@ void FoclHashTableRehash(Focl_HashTable* table)
     Focl_HashTableUnit** oldBuckets = table->buckets;
     size_t old_capacity = table->capacity;
     size_t newCapacity = table->capacity * 2;
-    Focl_HashTableUnit** newBuckets = (Focl_HashTableUnit**)calloc(newCapacity, sizeof(Focl_HashTableUnit*));
+    Focl_HashTableUnit** newBuckets = (Focl_HashTableUnit**)Focl_calloc(newCapacity, sizeof(Focl_HashTableUnit*));
     table->buckets = newBuckets;
     table->capacity = newCapacity;
     table->size = 0;
@@ -1212,12 +1257,12 @@ void freeFoclHashTable(Focl_HashTable* table, Focl_KeyOpDt* keyOpDt, Focl_ValueO
 
 Focl_PoolBlock* createFoclPoolBlock(size_t itemCount, size_t itemSize, Focl_TypeOpCt* opCt)
 {
-    Focl_PoolBlock* block = (Focl_PoolBlock*)malloc(sizeof(Focl_PoolBlock));
+    Focl_PoolBlock* block = (Focl_PoolBlock*)Focl_malloc(sizeof(Focl_PoolBlock));
     block->itemCount = itemCount;
     block->itemSize = itemSize;
     block->freeTop = itemCount;
-    block->freeStack = (size_t*)malloc(itemCount * sizeof(size_t));
-    block->data = malloc(itemCount * itemSize);
+    block->freeStack = (size_t*)Focl_malloc(itemCount * sizeof(size_t));
+    block->data = Focl_malloc(itemCount * itemSize);
     if (opCt != NULL)
     {
         for (size_t i = 0; i < itemCount; i++)
@@ -1250,10 +1295,10 @@ void freeFoclPoolBlock(Focl_PoolBlock* block, Focl_TypeOpDt* opDt)
 }
 Focl_Pool* createFoclPool(size_t itemSize_, size_t itemPerBlock_, size_t iBlockCount, Focl_TypeOpCt* opCt)
 {
-    Focl_Pool* pool = (Focl_Pool*)malloc(sizeof(Focl_Pool));
+    Focl_Pool* pool = (Focl_Pool*)Focl_malloc(sizeof(Focl_Pool));
     pool->itemSize = itemSize_;
     pool->itemPerBlock = itemPerBlock_;
-    pool->blocks = (Focl_PoolBlock**)malloc(sizeof(Focl_PoolBlock*) * iBlockCount);
+    pool->blocks = (Focl_PoolBlock**)Focl_malloc(sizeof(Focl_PoolBlock*) * iBlockCount);
     pool->blockCount = iBlockCount;
     for (size_t i = 0; i < iBlockCount; i++)
     {
@@ -1273,7 +1318,7 @@ void freeFoclPool(Focl_Pool* pool, Focl_TypeOpDt* opDt) /* Distinguish it from F
 }
 void FoclPoolBlockExpand(Focl_Pool* pool, size_t newBlockCount, Focl_TypeOpCt* opCt)
 {
-    pool->blocks = (Focl_PoolBlock**)realloc(pool->blocks, sizeof(Focl_PoolBlock*) * newBlockCount);
+    pool->blocks = (Focl_PoolBlock**)Focl_realloc(pool->blocks, sizeof(Focl_PoolBlock*) * newBlockCount);
     size_t iS = pool->itemSize;
     size_t iPB = pool->itemPerBlock;
     for (size_t i = pool->blockCount; i < newBlockCount; i++)
@@ -1391,7 +1436,7 @@ void FoclStringPoolFreeOpDtVoid(void* str, void* strPool)
 
 Focl_VectorPool* createFoclVectorPool(size_t lenOfElement)
 {
-    Focl_VectorPool* vecPool = malloc(sizeof(Focl_VectorPool));
+    Focl_VectorPool* vecPool = Focl_malloc(sizeof(Focl_VectorPool));
     vecPool->elementLen = lenOfElement;
     FoclVectorOpCtCtx ctCtx = {.itemSize = lenOfElement, .iCapacity = FOCL_VECTOR_INIT_CAPACITY};
     Focl_TypeOpCt opCt = {.func = FoclVectorOpCtVoid, .ctx = &ctCtx};
@@ -1476,14 +1521,14 @@ Focl_Obj_Float Focl_StrToFloat_View(const Focl_StringView* strView)
 
 Focl_Object* createFoclObject(Focl_Obj_Type type_)
 {
-    Focl_Object* obj = (Focl_Object*)malloc(sizeof(Focl_Object));
+    Focl_Object* obj = (Focl_Object*)Focl_malloc(sizeof(Focl_Object));
     obj->refCount = 1;
     obj->type = type_;
     return obj;
 }
 Focl_Object* createStringFoclObject(Focl_Obj_Type type_, Focl_StringPool* strPool)
 {
-    Focl_Object* obj = (Focl_Object*)malloc(sizeof(Focl_Object));
+    Focl_Object* obj = (Focl_Object*)Focl_malloc(sizeof(Focl_Object));
     obj->refCount = 1;
     obj->type = type_;
     obj->as.data = FoclStringPoolAlloc(strPool);
@@ -1898,7 +1943,7 @@ void freeFoclObjTable(Focl_ObjTable* objTable, Focl_Context* context)
 
 Focl_Command* createFoclCommandBuildIn(Focl_CommandFunc cmdFunc, Focl_StringPool* strPool, const char* cmdName)
 {
-    Focl_Command* cmd = (Focl_Command*)malloc(sizeof(Focl_Command));
+    Focl_Command* cmd = (Focl_Command*)Focl_malloc(sizeof(Focl_Command));
     cmd->func = cmdFunc;
     cmd->name = FoclStringPoolAlloc(strPool);
     FoclStrAssign(cmd->name, cmdName);
@@ -1908,7 +1953,7 @@ Focl_Command* createFoclCommandBuildIn(Focl_CommandFunc cmdFunc, Focl_StringPool
 }
 Focl_Command* createFoclCommand(Focl_StringPool* strPool, Focl_String* cmdName, Focl_StringView* argsView, Focl_StringView* procView)
 {
-    Focl_Command* cmd = (Focl_Command*)malloc(sizeof(Focl_Command));
+    Focl_Command* cmd = (Focl_Command*)Focl_malloc(sizeof(Focl_Command));
     cmd->name = FoclStringPoolAlloc(strPool);
     FoclStrAssignStr(cmd->name, cmdName);
     cmd->func = Focl_evalProc;
@@ -1965,7 +2010,7 @@ void freeFoclCommandTable(Focl_CommandTable* cmdTable, Focl_StringPool* strPool)
 /* If parent_ is NULL, it will create a root(or global) environment. and also, if the parent_ is null, it will neglect the envName and keep using "::" */
 Focl_Environment* createFoclEnvironment(Focl_Environment* parent_, Focl_StringPool* strPool, Focl_VectorPool* strVecPool, char* envName)
 {
-    Focl_Environment* env = (Focl_Environment*)malloc(sizeof(Focl_Environment));
+    Focl_Environment* env = (Focl_Environment*)Focl_malloc(sizeof(Focl_Environment));
     env->parent = parent_;
     if (parent_ != NULL)
     {
@@ -2008,7 +2053,7 @@ void freeFoclEnvironment(Focl_Environment* env, Focl_Context* context)
 
 Focl_Context* createFoclContext(FILE* outpotfPtr)
 {
-    Focl_Context* context = (Focl_Context*)malloc(sizeof(Focl_Context));
+    Focl_Context* context = (Focl_Context*)Focl_malloc(sizeof(Focl_Context));
     context->strPool = createFoclStringPool();
     context->objVecPool = createFoclVectorPool(sizeof(Focl_Object*));
     context->strVecPool = createFoclVectorPool(sizeof(Focl_String*));
@@ -3261,9 +3306,9 @@ Focl_Object* Focl_parseLine(Focl_Context* context, Focl_String* lineStr)
 
 Focl_IOBuffer* createFoclIOBuffer(FILE* fptr_, int bufferSize)
 {
-    Focl_IOBuffer* ioBuffer = (Focl_IOBuffer*)malloc(sizeof(Focl_IOBuffer));
+    Focl_IOBuffer* ioBuffer = (Focl_IOBuffer*)Focl_malloc(sizeof(Focl_IOBuffer));
     ioBuffer->size = bufferSize;
-    ioBuffer->buf = malloc(sizeof(char) * bufferSize);
+    ioBuffer->buf = Focl_malloc(sizeof(char) * bufferSize);
     ioBuffer->used = 0;
     ioBuffer->fPtr = fptr_;
     return ioBuffer;
@@ -3478,7 +3523,7 @@ char* Focl_getline(FILE* fp, size_t* len)
 {
     size_t capacity = 128;
     size_t length = 0;
-    char* buf = malloc(capacity);
+    char* buf = Focl_malloc(capacity);
     int c;
     while ((c = fgetc(fp)) != EOF && c != '\n')
     {
@@ -3490,7 +3535,7 @@ char* Focl_getline(FILE* fp, size_t* len)
         if (length + 1 >= capacity)
         {
             capacity *= 2;
-            char* newbuf = realloc(buf, capacity);
+            char* newbuf = Focl_realloc(buf, capacity);
             if (newbuf == NULL)
             {
                 free(buf);

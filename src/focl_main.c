@@ -8,7 +8,14 @@
 #include <windows.h>
 #endif
 
+#ifdef INIT_MALLOC
+extern size_t malloced;
+extern size_t realloced;
+#endif
+
 #define FOCLRC_FILENAME ".foclrc"
+
+void* Focl_realloc(void* ptr, size_t size);
 
 int execfoclrc(Focl_Context* ctx)
 {
@@ -20,7 +27,7 @@ int execfoclrc(Focl_Context* ctx)
     
     size_t lenOfPath = strlen(rcpath);
     size_t newSize = lenOfPath + 1 + sizeof(FOCLRC_FILENAME);
-    rcpath = realloc(rcpath, newSize);
+    rcpath = Focl_realloc(rcpath, newSize);
     if (rcpath == NULL)
     {
         return 0;
@@ -98,6 +105,9 @@ int main(int argc, char* argv[])
 
     if (shouldEnterREPL) /* REPL */
     {
+    #ifdef INIT_MALLOC
+        printf("Malloced:%lld Bytes, Realloced:%lld Bytes\n", malloced, realloced);
+    #endif
         printf("Focl REPL\n");
         printf("Type \"exit\" to quit.\n");
         exitCode = Focl_REPL(ctx);

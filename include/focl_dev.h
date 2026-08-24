@@ -40,6 +40,10 @@ extern "C"
     #error "Unsupported word length platform. Though I want to see this program run in every platform. But now it couldn't run yours. Sorry. :("
 #endif
 
+void* Focl_malloc(size_t size);
+void* Focl_realloc(void* ptr, size_t size);
+void* Focl_calloc(size_t itemCount, size_t itemSize);
+
 typedef Focl_Obj_Int Focl_Obj_Bool;
 #define FOCL_OBJ_TRUE 1
 #define FOCL_OBJ_FALSE 0

@@ -335,13 +335,7 @@ Focl_Object* sys_mv(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
         char* filename = Focl_GetPathLastName(realSrcPath);
         size_t lenOfFileName = strlen(filename);
         size_t lenOfDstPath = strlen(realDstPath);
-        char* newPath = realloc(realDstPath, lenOfFileName + lenOfDstPath + 2);
-        if (newPath == NULL)
-        {
-            free(realSrcPath);
-            free(realDstPath);
-            abort();
-        }
+        char* newPath = Focl_realloc(realDstPath, lenOfFileName + lenOfDstPath + 2);
         realDstPath = newPath;
         realDstPath[lenOfDstPath] = '/';
         memcpy(realDstPath + lenOfDstPath + 1, filename, lenOfFileName + 1);
@@ -399,12 +393,8 @@ Focl_Object* sys_cat(Focl_Context* context, Focl_Vector* objVec, Focl_Command* c
                 }
                 else
                 {
-                    char* buffer = malloc(fileSize + 1);
+                    char* buffer = Focl_malloc(fileSize + 1);
                     buffer[fileSize] = '\0';
-                    if (buffer == NULL)
-                    {
-                        abort(); /* I have to deal with OOM problem, because string may be very long! */
-                    }
                     (void)fread(buffer, sizeof(char), fileSize, fp);
                     retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
                     FoclStrAssign(FoclObjectGetString(retValue), buffer);
