@@ -8,9 +8,9 @@
 #include <windows.h>
 #endif
 
-#ifdef INIT_MALLOC
-extern size_t malloced;
-extern size_t realloced;
+#ifdef MEMORY_ALLOC_CHECK
+extern size_t focl_malloced_;
+extern size_t focl_realloced_;
 #endif
 
 #define FOCLRC_FILENAME ".foclrc"
@@ -105,8 +105,8 @@ int main(int argc, char* argv[])
 
     if (shouldEnterREPL) /* REPL */
     {
-    #ifdef INIT_MALLOC
-        printf("Malloced:%lld Bytes, Realloced:%lld Bytes\n", malloced, realloced);
+    #ifdef MEMORY_ALLOC_CHECK
+        printf("Malloced:%lld Bytes, Realloced:%lld Bytes\n", focl_malloced_, focl_realloced_);
     #endif
         printf("Focl REPL\n");
         printf("Type \"exit\" to quit.\n");

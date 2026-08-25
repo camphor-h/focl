@@ -40,6 +40,11 @@ extern "C"
     #error "Unsupported word length platform. Though I want to see this program run in every platform. But now it couldn't run yours. Sorry. :("
 #endif
 
+#ifdef MEMORY_ALLOC_CHECK
+extern size_t focl_malloced_;
+extern size_t focl_realloced_;
+#endif
+
 void* Focl_malloc(size_t size);
 void* Focl_realloc(void* ptr, size_t size);
 void* Focl_calloc(size_t itemCount, size_t itemSize);
@@ -369,7 +374,7 @@ void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_Comman
 
 int focl_countBraceDepth(const char* str);
 
-char* Focl_getline(FILE* fp, size_t* len);
+void Focl_getline(FILE* fp, char** linePtr, size_t* len, size_t* capacity);
 
 #define FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, dsttype, strObjPool, strPool) \
     obj = FoclObjVecAt(objVec, idx); \

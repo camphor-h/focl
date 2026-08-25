@@ -54,7 +54,7 @@ release: $(BUILD_DIR)/$(TARGET) $(BUILD_DIR)/$(TARGET_C) $(LIB_DIR)/$(LIBRARY)
 	@cp $(BUILD_DIR)/$(TARGET_C) .
 	@cp $(LIB_DIR)/$(LIBRARY) .
 
-debug: CFLAGS += -g -DINIT_MALLOC
+debug: CFLAGS += -g -DMEMORY_ALLOC_CHECK
 debug: $(BUILD_DIR)/$(TARGET) $(BUILD_DIR)/$(TARGET_C) $(LIB_DIR)/$(LIBRARY)
 	@cp $(BUILD_DIR)/$(TARGET) .
 	@cp $(BUILD_DIR)/$(TARGET_C) .

@@ -1060,6 +1060,19 @@ Focl_Object* buildIn_lappend(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     return FoclObjectVoid(context->strObjPool, context->strPool);
 }
 
+#ifdef MEMORY_ALLOC_CHECK
+Focl_Object* buildIn_mcheck(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 0)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    FoclIOBufferPrintf(context->outBuffer, "Malloced:%lld Bytes, Realloced:%lld Bytes\n", focl_malloced_, focl_realloced_);
+    return FoclObjectVoid(context->strObjPool, context->strPool);
+}
+#endif
+
 void Focl_RegisterUtilsCommand(Focl_Context* context)
 {
     FoclRegisterCommand(context, "puts", buildIn_puts);
@@ -1095,4 +1108,7 @@ void Focl_RegisterUtilsCommand(Focl_Context* context)
     FoclRegisterCommand(context, "llength", buildIn_llength);
     FoclRegisterCommand(context, "lindex", buildIn_lindex);
     FoclRegisterCommand(context, "lappend", buildIn_lappend);
+#ifdef MEMORY_ALLOC_CHECK
+    FoclRegisterCommand(context, "mcheck", buildIn_mcheck);
+#endif
 }

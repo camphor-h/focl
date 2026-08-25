@@ -23,6 +23,11 @@ int Focl_REPL(Focl_Context* ctx)
         return ctx->exitCode;
     }
 
+    char* input = NULL;
+#ifdef _WIN32
+    size_t capacity = 0;
+#endif
+
     while (1)
     {
         FoclStrClear(prompt);
@@ -43,7 +48,7 @@ int Focl_REPL(Focl_Context* ctx)
     #ifdef _WIN32
         printf(FoclStrCStr(prompt));
         fflush(stdout);
-        char* input = Focl_getline(stdin, &lineLen);
+        Focl_getline(stdin, &input, &lineLen, &capacity);
     #else
         char* input = linenoise(FoclStrCStr(prompt));
         lineLen = strlen(input);
@@ -55,9 +60,7 @@ int Focl_REPL(Focl_Context* ctx)
         }
         if (lineLen == 0 && depth == 0)
         {
-        #ifdef _WIN32
-            free(input);
-        #else
+        #ifndef _WIN32
             linenoiseHistoryAdd(input);
             linenoiseFree(input);
         #endif
@@ -73,9 +76,7 @@ int Focl_REPL(Focl_Context* ctx)
         {
             depth = 0;
         }
-    #ifdef _WIN32
-        free(input);
-    #else
+    #ifndef _WIN32
         linenoiseHistoryAdd(input);
         linenoiseFree(input);
     #endif
@@ -100,6 +101,9 @@ int Focl_REPL(Focl_Context* ctx)
         FoclStrClear(&buffer);
         depth = 0;
     }
+#ifdef _WIN32
+    free(input);
+#endif
 
     ctx->hasExitBuf = false;
     FoclStringOpDt(&buffer);

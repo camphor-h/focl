@@ -46,17 +46,15 @@ void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_String
 
 Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView);
 
-char* Focl_getline(FILE* fp, size_t* len);
-
-#ifdef INIT_MALLOC
-size_t malloced = 0;
-size_t realloced = 0;
+#ifdef MEMORY_ALLOC_CHECK
+size_t focl_malloced_ = 0;
+size_t focl_realloced_ = 0;
 #endif
 
 void* Focl_malloc(size_t size)
 {
-#ifdef INIT_MALLOC
-    malloced += size;
+#ifdef MEMORY_ALLOC_CHECK
+    focl_malloced_ += size;
 #endif
     void* ptr = malloc(size);
     if (ptr == NULL && size != 0)
@@ -68,8 +66,8 @@ void* Focl_malloc(size_t size)
 }
 void* Focl_realloc(void* ptr, size_t size)
 {
-#ifdef INIT_MALLOC
-    realloced += size;
+#ifdef MEMORY_ALLOC_CHECK
+    focl_realloced_ += size;
 #endif
     void* newPtr = realloc(ptr, size);
     if (newPtr == NULL && size != 0)
@@ -81,8 +79,8 @@ void* Focl_realloc(void* ptr, size_t size)
 }
 void* Focl_calloc(size_t itemCount, size_t itemSize)
 {
-#ifdef INIT_MALLOC
-    malloced += itemCount * itemSize;
+#ifdef MEMORY_ALLOC_CHECK
+    focl_malloced_ += itemCount * itemSize;
 #endif
     void* ptr = calloc(itemCount, itemSize);
     if (ptr == NULL && itemCount != 0)
@@ -3411,14 +3409,14 @@ void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer, Focl_StringPool* 
 
 Focl_Object* FoclObjectScan(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Object* obj)
 {
-    size_t len;
-    char* input = Focl_getline(stdin, &len);
+    Focl_String* input = FoclStringPoolAlloc(strPool);
+    Focl_getline(stdin, &(input->data), &(input->length), &(input->capacity));
     if (input == NULL)
     {
         return FoclObjectError(strObjPool, strPool, FOCL_ERR_READ_ERR_STDIN);
     }
     Focl_Object* result = obj;
-    if (Focl_isInteger(input))
+    if (Focl_isInteger(FoclStrCStr(input)))
     {
         if (obj->type != FOCL_OBJ_TYPE_INT)
         {
@@ -3426,10 +3424,10 @@ Focl_Object* FoclObjectScan(Focl_StrObjPool* strObjPool, Focl_StringPool* strPoo
         }
         else
         {
-            obj->as.i = Focl_StrToInt(input);
+            obj->as.i = Focl_StrToInt(FoclStrCStr(input));
         }
     }
-    else if (Focl_isFloat(input))
+    else if (Focl_isFloat(FoclStrCStr(input)))
     {
         if (obj->type != FOCL_OBJ_TYPE_FLOAT)
         {
@@ -3437,7 +3435,7 @@ Focl_Object* FoclObjectScan(Focl_StrObjPool* strObjPool, Focl_StringPool* strPoo
         }
         else
         {
-            obj->as.f = Focl_StrToFloat(input);
+            obj->as.f = Focl_StrToFloat(FoclStrCStr(input));
         }
     }
     else
@@ -3448,10 +3446,10 @@ Focl_Object* FoclObjectScan(Focl_StrObjPool* strObjPool, Focl_StringPool* strPoo
         }
         else
         {
-            FoclStrAssign(obj->as.data, input);
+            FoclStrAssignStr(obj->as.data, input);
         }
     }
-    free(input);
+    FoclStringPoolFree(input, strPool);
     return result;
 }
 
@@ -3519,11 +3517,14 @@ void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_Comman
     FoclHashTableInsert(context->globalEnv->cmdTable, _name, _cmd, StrKeyCompare, &keyOpDt, NULL);
 }
 
-char* Focl_getline(FILE* fp, size_t* len)
+void Focl_getline(FILE* fp, char** linePtr, size_t* len, size_t* capacity)
 {
-    size_t capacity = 128;
+    if (*linePtr == NULL)
+    {
+        *capacity = 128;
+        *linePtr = Focl_malloc(128);
+    }
     size_t length = 0;
-    char* buf = Focl_malloc(capacity);
     int c;
     while ((c = fgetc(fp)) != EOF && c != '\n')
     {
@@ -3531,28 +3532,26 @@ char* Focl_getline(FILE* fp, size_t* len)
         {
             continue;
         }
-        buf[length++] = (char)c;
-        if (length + 1 >= capacity)
+       (*linePtr)[length++] = (char)c;
+        if (length + 1 >= *capacity)
         {
-            capacity *= 2;
-            char* newbuf = Focl_realloc(buf, capacity);
-            if (newbuf == NULL)
-            {
-                free(buf);
-                return NULL;
-            }
-            buf = newbuf;
+            *capacity *= 2;
+            *linePtr = Focl_realloc(*linePtr, *capacity);
         }
     }
     if (length == 0 && c == EOF)
     {
-        free(buf);
-        if (len) *len = 0;
-        return NULL;
+        if (len)
+        {
+            *len = 0;
+            return;
+        }
     }
-    buf[length] = '\0';
-    if (len) *len = length;
-    return buf;
+    (*linePtr)[length] = '\0';
+    if (len)
+    {
+        *len = length;
+    }
 }
 int focl_countBraceDepth(const char* str)
 {
@@ -3611,17 +3610,21 @@ int Focl_ExecFile(Focl_Context* ctx, const char* filename)
         return ctx->exitCode;
     }
 
-    size_t lineLen;
-    char* input;
-    while ((input = Focl_getline(fp, &lineLen)) != NULL)
+    Focl_String* input = FoclStringPoolAlloc(ctx->strPool);
+    while (1)
     {
+        Focl_getline(fp, &(input->data), &(input->length), &(input->capacity));
+        if (input->length == 0)
+        {
+            break;
+        }
         if (buffer.length > 0)
         {
             FoclStrAppend(&buffer, "\n");
         }
-        FoclStrAppend(&buffer, input);
-        depth += focl_countBraceDepth(input);
-        free(input);
+        FoclStrAppendStr(&buffer, input);
+        depth += focl_countBraceDepth(FoclStrCStr(input));
+        FoclStringPoolFree(input, ctx->strPool);
         if (depth > 0)
         {
             continue;

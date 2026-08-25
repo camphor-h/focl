@@ -1,5 +1,6 @@
 build/
-10000times.focl
-focl.exe
-foclc.exe
+*.focl
+*.exe
+focl
+foclc
 libfocl.a
