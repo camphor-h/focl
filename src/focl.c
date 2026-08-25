@@ -3624,7 +3624,6 @@ int Focl_ExecFile(Focl_Context* ctx, const char* filename)
         }
         FoclStrAppendStr(&buffer, input);
         depth += focl_countBraceDepth(FoclStrCStr(input));
-        FoclStringPoolFree(input, ctx->strPool);
         if (depth > 0)
         {
             continue;
@@ -3638,8 +3637,10 @@ int Focl_ExecFile(Focl_Context* ctx, const char* filename)
         }
         FoclObjectRelease(result, ctx);
         FoclStrClear(&buffer);
+        FoclStrClear(input);
         depth = 0;
     }
+    FoclStringPoolFree(input, ctx->strPool);
 
     if (depth > 0)
     {
