@@ -23,7 +23,7 @@ int64_t Focl_getpid()
 #endif
 
 #define COMPILE_DEBUG_OPTION_DEF "-g"
-#define COMPILE_RELEASE_OPTION_DEF "-O2"
+#define COMPILE_RELEASE_OPTION_DEF "-O2 -flto"
 
 #define HEAD_OF_COMPILE_CONTENT_DEF \
     "#include <stdio.h> \n" \

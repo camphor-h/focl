@@ -2,6 +2,7 @@
 void Focl_RegisterUtilsCommand(Focl_Context* context);
 void Focl_RegisterMathCommand(Focl_Context* context);
 void Focl_RegisterSystemCommand(Focl_Context* context);
+void Focl_RegisterTerminalCommand(Focl_Context* context);
 
 void Focl_RegisterBuiltinCommands(Focl_Context* context)
 {
@@ -13,5 +14,8 @@ void Focl_RegisterBuiltinCommands(Focl_Context* context)
 #endif
 #ifdef FOCL_REGISTER_SYS
     Focl_RegisterSystemCommand(context);
+#endif
+#ifdef FOCL_REGISTER_TERM
+    Focl_RegisterTerminalCommand(context);
 #endif
 }
