@@ -23,10 +23,13 @@ int64_t Focl_getpid()
 #endif
 
 #define COMPILE_DEBUG_OPTION_DEF "-g"
-#define COMPILE_RELEASE_OPTION_DEF "-O2 -flto"
+#define COMPILE_RELEASE_OPTION_DEF "-O2 -flto -s"
 
 #define HEAD_OF_COMPILE_CONTENT_DEF \
-    "#include <stdio.h> \n" \
+    "#include <stdio.h>\n" \
+    "#ifdef _WIN32\n" \
+    "#include <windows.h>\n" \
+    "#endif\n" \
     "typedef struct Focl_Object Focl_Object;\n" \
     "typedef struct Focl_Context Focl_Context;\n" \
     "Focl_Context* createFoclContext(FILE* outpotfPtr);\n" \
@@ -36,6 +39,10 @@ int64_t Focl_getpid()
     "Focl_Object* Focl_eval(Focl_Context* context, const char* Cstr);\n" \
     "int main(int argc, char* argv[])\n" \
     "{\n" \
+    "#ifdef _WIN32\n" \
+    "   SetConsoleCP(65001);\n" \
+    "   SetConsoleOutputCP(65001);\n" \
+    "#endif\n"\
     "   Focl_Context* ctx = createFoclContext(stdout);\n" \
     "   Focl_RegisterBuiltinCommands(ctx);\n" \
     "   FoclObjectRelease(Focl_eval(ctx, \""

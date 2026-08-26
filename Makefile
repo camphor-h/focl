@@ -1,5 +1,6 @@
 CC = cc
 CFLAGS = -Wall -Wextra
+LDFLAGS = -lm
 INCLUDES = -I./include
 PACK_CMD = -DFOCL_REGISTER_UTILS -DFOCL_REGISTER_MATH -DFOCL_REGISTER_SYS -DFOCL_REGISTER_TERM
 TARGET = focl
@@ -44,12 +45,13 @@ $(LIB_DIR)/$(LIBRARY): $(OBJ_COMMON) | $(LIB_DIR)
 	ar rcs $@ $(OBJ_COMMON)
 
 $(BUILD_DIR)/$(TARGET): $(OBJ_COMMON) $(OBJ_FOCL) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(OBJ_COMMON) $(OBJ_FOCL) -lm -o $@
+	$(CC) $(CFLAGS) $(OBJ_COMMON) $(OBJ_FOCL) $(LDFLAGS) -o $@
 
 $(BUILD_DIR)/$(TARGET_C): $(OBJ_COMMON) $(OBJ_FOCLC) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(OBJ_COMMON) $(OBJ_FOCLC) -lm -o $@
+	$(CC) $(CFLAGS) $(OBJ_COMMON) $(OBJ_FOCLC) $(LDFLAGS) -o $@
 
 release: CFLAGS += -O2 -flto
+release: LDFLAGS += -s
 release: $(BUILD_DIR)/$(TARGET) $(BUILD_DIR)/$(TARGET_C) $(LIB_DIR)/$(LIBRARY)
 	@cp $(BUILD_DIR)/$(TARGET) .
 	@cp $(BUILD_DIR)/$(TARGET_C) .
