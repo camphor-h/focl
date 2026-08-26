@@ -326,9 +326,16 @@ typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* obj
 #define FOCL_ERR_MUST_BE_BLOCK "For arguments must be blocks"
 #define FOCL_ERR_INDEX_NEGATIVE "Index couldn't be negative"
 #define FOCL_ERR_INDEX_OOL "Index out of length"
+
+#ifndef __FILE_NAME__
+#define FOCL_FILE_NAME_ __FILE__
+#else
+#define FOCL_FILE_NAME_ __FILE_NAME__
+#endif
+
 #define _FOCL_STR_HELPER(x) #x
 #define _FOCL_MACRO_AS_STR(x) _FOCL_STR_HELPER(x)
-#define FOCL_ERR_YSNBH "You should not be here! Line: " _FOCL_MACRO_AS_STR(__LINE__)
+#define FOCL_ERR_YSNBH "You should not be here! Line: " _FOCL_MACRO_AS_STR(__LINE__) " File: " FOCL_FILE_NAME_
 
 void FoclVectorPoolFree(Focl_Vector* vec, Focl_VectorPool* vecPool);
 

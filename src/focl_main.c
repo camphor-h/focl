@@ -93,6 +93,13 @@ int main(int argc, char* argv[])
                     exitCode = 1;
                 }
             }
+            else if (strcmp(argv[i], "-v") == 0)
+            {
+                shouldEnterREPL = false;
+                fileToOpen = NULL;
+                printf("Fast Optimized Command Language\nBuild time:" __DATE__", "__TIME__ "\n");
+                exitCode = 0;
+            }
             else
             {
                 fileToOpen = argv[i];
