@@ -10,12 +10,13 @@
 #include <windows.h>
 #include <io.h>
 #include <shlobj.h>
+#elifdef __linux__
+#include <sys/sendfile.h>
 #else
 #include <unistd.h>
 #include <sys/stat.h>
 #include <dirent.h>
 #include <sys/types.h>
-#include <sys/sendfile.h>
 #include <sys/time.h>
 #include <fcntl.h>
 #include <pwd.h>
