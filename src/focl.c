@@ -3162,6 +3162,42 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
                     return FoclObjectError(context->strObjPool, context->strPool, "Comparison operands must be integers");
                 }
 
+                if (isFoclObjectUseString(leftObj) && isFoclObjectUseString(rightObj))
+                {
+                    int cmp = FoclStrCompStr(FoclObjectGetString(leftObj), FoclObjectGetString(rightObj));
+                    bool result = false;
+                    switch (k)
+                    {
+                        case 0: result = (cmp == 0); break;  /* == */
+                        case 1: result = (cmp != 0); break;  /* != */
+                        case 2: result = (cmp <= 0); break;  /* <= */
+                        case 3: result = (cmp >= 0); break;  /* >= */
+                        case 4: result = (cmp < 0); break;   /* < */
+                        case 5: result = (cmp > 0); break;   /* > */
+                    }
+                    FoclObjectRelease(leftObj, context);
+                    FoclObjectRelease(rightObj, context);
+                    return FoclObjectBool(context->objWithNoStrPool, result);
+                }
+                if (leftObj->type == FOCL_OBJ_TYPE_FLOAT || rightObj->type == FOCL_OBJ_TYPE_FLOAT)
+                {
+                    double l = (leftObj->type == FOCL_OBJ_TYPE_INT) ? (double)leftObj->as.i : leftObj->as.f;
+                    double r = (rightObj->type == FOCL_OBJ_TYPE_INT) ? (double)rightObj->as.i : rightObj->as.f;
+                    bool result = false;
+                    switch (k)
+                    {
+                        case 0: result = (l == r); break;
+                        case 1: result = (l != r); break;
+                        case 2: result = (l <= r); break;
+                        case 3: result = (l >= r); break;
+                        case 4: result = (l < r); break;
+                        case 5: result = (l > r); break;
+                    }
+                    FoclObjectRelease(leftObj, context);
+                    FoclObjectRelease(rightObj, context);
+                    return FoclObjectBool(context->objWithNoStrPool, result);
+                }
+
                 Focl_Obj_Int l = leftObj->as.i;
                 Focl_Obj_Int r = rightObj->as.i;
                 Focl_Obj_Bool result = FOCL_OBJ_FALSE;
@@ -3239,10 +3275,14 @@ Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* str
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
     }
-    Focl_String tmpCmdStr;
-    char saved = initTempFoclStringWithView(&tmpCmdStr, &cmdView);
-    Focl_Command* cmd = Focl_FindCommand(context, &tmpCmdStr);
-    restoreFoclStringViewFromTempString(&cmdView, saved);
+    Focl_Object* cmdObj = getFoclObjectWithStringView(context, &cmdView);
+    if (cmdObj->type != FOCL_OBJ_TYPE_STR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
+    }
+    
+    Focl_Command* cmd = Focl_FindCommand(context, FoclObjectGetString(cmdObj));
+    FoclObjectRelease(cmdObj, context);
     if (cmd == FOCL_COMMAND_ERROR)
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND);

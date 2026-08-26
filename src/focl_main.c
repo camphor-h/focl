@@ -13,10 +13,13 @@ extern size_t focl_malloced_;
 extern size_t focl_realloced_;
 #endif
 
+#ifdef NEED_PROFILE
 #define FOCLRC_FILENAME ".foclrc"
+#endif
 
 void* Focl_realloc(void* ptr, size_t size);
 
+#ifdef NEED_PROFILE
 int execfoclrc(Focl_Context* ctx)
 {
     char* rcpath = Focl_GetHomeDirectory();
@@ -48,6 +51,7 @@ int execfoclrc(Focl_Context* ctx)
     free(rcpath);
     return foclrcExecCode;
 }
+#endif
 
 int main(int argc, char* argv[])
 {
@@ -58,7 +62,9 @@ int main(int argc, char* argv[])
     Focl_Context* ctx = createFoclContext(stdout);
     Focl_RegisterBuiltinCommands(ctx);
     int exitCode = 0;
+#ifdef NEED_PROFILE
     bool shouldExecFoclrc = true;
+#endif
     bool shouldEnterREPL = true;
     char* fileToOpen = NULL;
     if (argc > 1)
@@ -67,7 +73,9 @@ int main(int argc, char* argv[])
         {
             if (strcmp(argv[i], "--norc") == 0)
             {
+            #ifdef NEED_PROFILE
                 shouldExecFoclrc = false;
+            #endif
             }
             else if (strcmp(argv[i], "-c") == 0)
             {
@@ -93,6 +101,7 @@ int main(int argc, char* argv[])
         }
     }
     
+#ifdef NEED_PROFILE
     if (shouldExecFoclrc)
     {
         exitCode = execfoclrc(ctx);
@@ -102,6 +111,7 @@ int main(int argc, char* argv[])
             return exitCode;
         }
     }
+#endif
 
     if (shouldEnterREPL) /* REPL */
     {

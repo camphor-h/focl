@@ -13,6 +13,8 @@
 
 #define FOCL_EDITOR_VAR_NAME "_FOCL_SYS_USING_EDITOR"
 
+#define CLEAR_SCREEN "\033[2J\033[H"
+
 Focl_Object* sys_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
@@ -444,6 +446,16 @@ Focl_Object* sys_edit(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
     FoclStringPoolFree(editorName, context->strPool);
     return FoclObjectVoid(context->strObjPool, context->strPool);
 }
+Focl_Object* sys_clear(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 0)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    printf(CLEAR_SCREEN);
+    return FoclObjectVoid(context->strObjPool, context->strPool);
+}
 
 void Focl_RegisterSystemCommand(Focl_Context* context)
 {
@@ -455,4 +467,5 @@ void Focl_RegisterSystemCommand(Focl_Context* context)
     FoclRegisterCommand(context, "sys::mv", sys_mv);
     FoclRegisterCommand(context, "sys::cat", sys_cat);
     FoclRegisterCommand(context, "sys::edit", sys_edit);
+    FoclRegisterCommand(context, "sys::clear", sys_clear);
 }

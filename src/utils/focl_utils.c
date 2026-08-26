@@ -661,18 +661,64 @@ Focl_Object* buildIn_upvar(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    Focl_String* outerName = FoclObjVecAtAsString(objVec, 0);
-    Focl_String* localName = FoclObjVecAtAsString(objVec, 1);
-    Focl_Object* outerVar = Focl_FindObject(context->curEnv, context->strPool, outerName);
+    Focl_Object* outerObj;
+    Focl_Object* innerObj;
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, outerObj, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 1, innerObj, context->strObjPool, context->strPool);
+    Focl_String* outerName = FoclObjectGetString(outerObj);
+    Focl_String* localName = FoclObjectGetString(innerObj);
+    if (context->curEnv == context->globalEnv)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, "No outer environment");
+    }
+    Focl_Object* outerVar = Focl_FindObject(context->curEnv->parent, context->strPool, outerName);
     if (outerVar == FOCL_OBJECT_ERROR)
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+    }
+    Focl_Object* existing = Focl_FindObject(context->curEnv, context->strPool, localName);
+    if (existing != FOCL_OBJECT_ERROR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, "Variable already exists in current scope");
     }
     FoclObjectRetain(outerVar);
     Focl_String* fullName = FoclStringPoolAlloc(context->strPool);
     FoclStrAssignStr(fullName, context->curEnv->envNamespace);
     FoclStrAppendStr(fullName, localName);
     LinkObjectWithName(context, outerVar, fullName);
+    FoclStringPoolFree(fullName, context->strPool);
+    return FoclObjectVoid(context->strObjPool, context->strPool);
+}
+Focl_Object* buildIn_global(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 1)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    if (context->curEnv == context->globalEnv)
+    {
+        /* Do nothing */
+        return FoclObjectVoid(context->strObjPool, context->strPool);
+    }
+    Focl_Object* nameObj;
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, nameObj, context->strObjPool, context->strPool);
+    Focl_String* name = FoclObjectGetString(nameObj);
+    Focl_Object* globalVar = Focl_FindObject(context->globalEnv, context->strPool, name);
+    if (globalVar == FOCL_OBJECT_ERROR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+    }
+    Focl_Object* existing = Focl_FindObject(context->curEnv, context->strPool, name);
+    if (existing != FOCL_OBJECT_ERROR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, "Variable already exists in current scope");
+    }
+    FoclObjectRetain(globalVar);
+    Focl_String* fullName = FoclStringPoolAlloc(context->strPool);
+    FoclStrAssignStr(fullName, context->curEnv->envNamespace);
+    FoclStrAppendStr(fullName, name);
+    LinkObjectWithName(context, globalVar, fullName);
     FoclStringPoolFree(fullName, context->strPool);
     return FoclObjectVoid(context->strObjPool, context->strPool);
 }
@@ -1073,6 +1119,27 @@ Focl_Object* buildIn_mcheck(Focl_Context* context, Focl_Vector* objVec, Focl_Com
 }
 #endif
 
+Focl_Object* buildIn_isint(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 1)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_String* iObjStr = FoclObjVecAtAsString(objVec, 0);
+    Focl_Object* iObj = Focl_FindObject(context->curEnv, context->strPool, iObjStr);
+    if (iObj == FOCL_OBJECT_ERROR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+    }
+
+    if (iObj->type == FOCL_OBJ_TYPE_INT)
+    {
+        return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_TRUE);
+    }
+    return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_FALSE);
+}
+
 void Focl_RegisterUtilsCommand(Focl_Context* context)
 {
     FoclRegisterCommand(context, "puts", buildIn_puts);
@@ -1095,6 +1162,7 @@ void Focl_RegisterUtilsCommand(Focl_Context* context)
     FoclRegisterCommand(context, "asfloat", buildIn_asfloat);
     FoclRegisterCommand(context, "exit", buildIn_exit);
     FoclRegisterCommand(context, "upvar", buildIn_upvar);
+    FoclRegisterCommand(context, "global", buildIn_global);
     FoclRegisterCommand(context, "proc", buildIn_proc);
     FoclRegisterCommand(context, "return", buildIn_return);
     FoclRegisterCommand(context, "isbuildin", buildIn_isBuildIn);
@@ -1108,6 +1176,7 @@ void Focl_RegisterUtilsCommand(Focl_Context* context)
     FoclRegisterCommand(context, "llength", buildIn_llength);
     FoclRegisterCommand(context, "lindex", buildIn_lindex);
     FoclRegisterCommand(context, "lappend", buildIn_lappend);
+    FoclRegisterCommand(context, "isint", buildIn_isint);
 #ifdef MEMORY_ALLOC_CHECK
     FoclRegisterCommand(context, "mcheck", buildIn_mcheck);
 #endif
