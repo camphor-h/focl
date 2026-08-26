@@ -3251,16 +3251,6 @@ Focl_Object* FoclObjVecAt(Focl_Vector* objVec, size_t idx)
 {
     return *(Focl_Object**)FoclVectorAtNoCheck(objVec, idx);
 }
-Focl_String* FoclObjVecAtAsString(Focl_Vector* objVec, size_t idx)
-{
-    return (*(Focl_Object**)FoclVectorAtNoCheck(objVec, idx))->as.data;
-}
-Focl_StringView FoclObjVecAtAsStringToView(Focl_Vector* objVec, size_t idx)
-{
-    Focl_String* str = FoclObjVecAtAsString(objVec, idx);
-    Focl_StringView strView = {str->length, str->data};
-    return strView;
-}
 
 Focl_Object* Focl_parseBlock(Focl_Context* context, Focl_StringView* strView)
 {
