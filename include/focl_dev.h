@@ -381,6 +381,14 @@ void Focl_getline(FILE* fp, char** linePtr, size_t* len, size_t* capacity);
         return FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG); \
     } \
 
+#define FOCL_OBJ_VEC_AT_AS_OBJ_WITH_CLEAR(objVec, idx, obj, dsttype, strObjPool, strPool, CLEAR_PROGN) \
+    obj = FoclObjVecAt(objVec, idx); \
+    if (obj->type != dsttype) \
+    { \
+        CLEAR_PROGN; \
+        return FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG); \
+    } \
+
 #define FOCL_OBJ_VEC_AT_NOT_ERR(objVec, idx, obj, strObjPool, strPool) \
     obj = FoclObjVecAt(objVec, idx); \
     if (obj->type == FOCL_OBJ_TYPE_ERROR) \
@@ -393,6 +401,8 @@ void Focl_getline(FILE* fp, char** linePtr, size_t* len, size_t* capacity);
 #define FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_STR, strObjPool, strPool)
 #define FOCL_OBJ_VEC_AT_AS_COMPOUND_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_COMPOUND, strObjPool, strPool)
 
+#define FOCL_OBJ_VEC_AT_AS_STRING_OBJ_WITH_CLEAR(objVec, idx, obj, strObjPool, strPool, CLEAR_PROGN) FOCL_OBJ_VEC_AT_AS_OBJ_WITH_CLEAR(objVec, idx, obj, FOCL_OBJ_TYPE_STR, strObjPool, strPool, CLEAR_PROGN)
+
 #define CONCAT_(a, b) a##b
 #define CONCAT(a, b) CONCAT_(a, b)
 #define UNIQUE_NAME(prefix) CONCAT(prefix, __COUNTER__)
@@ -401,8 +411,16 @@ void Focl_getline(FILE* fp, char** linePtr, size_t* len, size_t* capacity);
     FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, idx, strObj, strObjPool, strPool) \
     str = FoclObjectGetString(strObj) \
 
+#define FOCL_OBJ_VEC_AT_AS_STRING_WITH_CLEAR(objVec, idx, strObj, str, strObjPool, strPool, CLEAR_PROGN) \
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ_WITH_CLEAR(objVec, idx, strObj, strObjPool, strPool, CLEAR_PROGN) \
+    str = FoclObjectGetString(strObj) \
+
 #define FOCL_OBJ_VEC_AT_AS_STRING_VIEW(objVec, idx, strObj, str, strView, strObjPool, strPool) \
     FOCL_OBJ_VEC_AT_AS_STRING(objVec, idx, strObj, str, strObjPool, strPool); \
+    strView = (Focl_StringView){str->length, str->data} \
+
+#define FOCL_OBJ_VEC_AT_AS_STRING_VIEW_WITH_CLEAR(objVec, idx, strObj, str, strView, strObjPool, strPool, CLEAR_PROGN) \
+    FOCL_OBJ_VEC_AT_AS_STRING_WITH_CLEAR(objVec, idx, strObj, str, strObjPool, strPool, CLEAR_PROGN); \
     strView = (Focl_StringView){str->length, str->data} \
 
 #define FOCL_ERROBJ_ALLOC(errobj, ctx, content) \

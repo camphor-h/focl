@@ -283,7 +283,7 @@ Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
         Focl_Object* execBlockObj;
         Focl_String* execBlockStr;
         Focl_StringView execBlock;
-        FOCL_OBJ_VEC_AT_AS_STRING_VIEW(objVec, 1, execBlockObj, execBlockStr, execBlock, context->strObjPool, context->strPool);
+        FOCL_OBJ_VEC_AT_AS_STRING_VIEW_WITH_CLEAR(objVec, 1, execBlockObj, execBlockStr, execBlock, context->strObjPool, context->strPool, FoclObjectRelease(condResult, context));
         Focl_Object* bodyResult = Focl_parseBlock(context, &execBlock);
         if (bodyResult->type == FOCL_OBJ_TYPE_ERROR)
         {
@@ -1003,7 +1003,7 @@ Focl_Object* buildIn_string(Focl_Context* context, Focl_Vector* objVec, Focl_Com
             charIdx++;
         }
         ptrdiff_t byteLen = endPtr - startPtr;
-        char* tmpBuf = (char*)malloc(byteLen + 1);
+        char* tmpBuf = (char*)Focl_malloc(byteLen + 1);
         memcpy(tmpBuf, startPtr, byteLen);
         tmpBuf[byteLen] = '\0';
         retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
