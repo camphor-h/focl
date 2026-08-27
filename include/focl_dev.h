@@ -12,14 +12,28 @@ extern "C"
 #include <setjmp.h>
 #include <stdbool.h>
 
+#ifdef USE_F32_ON_64
+#if SIZE_MAX != 0xFFFFFFFFFFFFFFFF
+    #error "Not a 64-Bit platform. Don't define USE_F32_ON_64 macro."
+#endif
+#endif
+
 #if SIZE_MAX == 0xFFFFFFFFFFFFFFFF
     typedef uint32_t Focl_Obj_Type;
     typedef uint32_t Focl_Obj_RefCount;
+#ifndef USE_F32_ON_64
     typedef double Focl_Obj_Float;
+#else
+    typedef float Focl_Obj_Float;
+#endif
     typedef int64_t Focl_Obj_Int;
     #define FOCL_OBJ_INT_MAX ((1LL << 61) - 1)
     #define FOCL_FORMAT_INT PRId64
+#ifndef USE_F32_ON_64
     #define FOCL_FORMAT_FLOAT "lf"
+#else
+    #define FOCL_FORMAT_FLOAT "f"
+#endif
     #define FOCL_INT_TO_STR_TMP_BUFFER_SIZE 24
     #define FOCL_FLOAT_TO_STR_TMP_BUFFER_SIZE 32
     Focl_Obj_Int Focl_StrToInt(const char* str);

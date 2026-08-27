@@ -3,6 +3,7 @@ CFLAGS = -Wall -Wextra
 LDFLAGS = -lm
 INCLUDES = -I./include
 PACK_CMD = -DFOCL_REGISTER_UTILS -DFOCL_REGISTER_MATH -DFOCL_REGISTER_SYS -DFOCL_REGISTER_TERM
+CONFIG_DEF =
 TARGET = focl
 TARGET_C = foclc
 LIBRARY = libfocl.a
@@ -39,7 +40,7 @@ $(BUILD_DIR) $(OBJ_DIR) $(LIB_DIR):
 vpath %.c src src/system src/utils src/linenoise
 
 $(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
-	$(CC) $(CFLAGS) -MMD -MP $(INCLUDES) $(PACK_CMD) -c $< -o $@
+	$(CC) $(CFLAGS) -MMD -MP $(INCLUDES) $(PACK_CMD) $(CONFIG_DEF) -c $< -o $@
 
 $(LIB_DIR)/$(LIBRARY): $(OBJ_COMMON) | $(LIB_DIR)
 	ar rcs $@ $(OBJ_COMMON)
@@ -50,7 +51,7 @@ $(BUILD_DIR)/$(TARGET): $(OBJ_COMMON) $(OBJ_FOCL) | $(BUILD_DIR)
 $(BUILD_DIR)/$(TARGET_C): $(OBJ_COMMON) $(OBJ_FOCLC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(OBJ_COMMON) $(OBJ_FOCLC) $(LDFLAGS) -o $@
 
-release: CFLAGS += -O2 -flto
+release: CFLAGS += -O2 -flto -DNDBUG
 release: LDFLAGS += -s
 release: $(BUILD_DIR)/$(TARGET) $(BUILD_DIR)/$(TARGET_C) $(LIB_DIR)/$(LIBRARY)
 	@cp $(BUILD_DIR)/$(TARGET) .
