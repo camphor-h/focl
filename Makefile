@@ -51,7 +51,7 @@ $(BUILD_DIR)/$(TARGET): $(OBJ_COMMON) $(OBJ_FOCL) | $(BUILD_DIR)
 $(BUILD_DIR)/$(TARGET_C): $(OBJ_COMMON) $(OBJ_FOCLC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(OBJ_COMMON) $(OBJ_FOCLC) $(LDFLAGS) -o $@
 
-release: CFLAGS += -O2 -flto -DNDBUG
+release: CFLAGS += -O2 -flto -DNDEBUG
 release: LDFLAGS += -s
 release: $(BUILD_DIR)/$(TARGET) $(BUILD_DIR)/$(TARGET_C) $(LIB_DIR)/$(LIBRARY)
 	@cp $(BUILD_DIR)/$(TARGET) .
