@@ -430,6 +430,7 @@ Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src);
 Focl_Object* FoclObjectCopy(Focl_Context* context, Focl_Object* src);
 
 void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer, Focl_StringPool* strPool);
+void FoclObjectGets(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Object* obj);
 Focl_Object* FoclObjectScan(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Object* obj);
 Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
 void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_CommandFunc func);

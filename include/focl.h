@@ -19,13 +19,14 @@ typedef struct Focl_Context Focl_Context;
 typedef struct Focl_Command Focl_Command;
 typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
 
-Focl_Context* createFoclContext(FILE* outpotfPtr);
+Focl_Context* createFoclContext(FILE* outpotfPtr, int argc, char** argv);
 void freeFoclContext(Focl_Context* context);
 int Focl_REPL(Focl_Context* ctx);
 int Focl_ExecFile(Focl_Context* ctx, const char* filename);
 void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_CommandFunc func);
 void Focl_RegisterBuiltinCommands(Focl_Context* context);
 Focl_Object* Focl_eval(Focl_Context* context, const char* Cstr);
+int Focl_evalWithExitCode(Focl_Context* context, const char* Cstr);
 void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);
 
 #ifdef __cplusplus

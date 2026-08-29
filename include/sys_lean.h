@@ -1,8 +1,8 @@
 #ifndef SYS_LEAN_H
 #define SYS_LEAN_H
 
-#include <stdbool.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #ifndef PATH_MAX
 
@@ -30,5 +30,6 @@ int Focl_copy(const char* src, const char* dst);
 char* Focl_GetPathLastName(const char *path); /* free the return value! */
 int Focl_execAndWait(const char* command, char* const argv[]);
 char* Focl_GetFileNameWithoutExt(const char* path); /* free the return value! */
+void Focl_GetCurrentExecFilePath(char* buffer, size_t size); /* return with the PATH_SEP in the last character */
 
 #endif

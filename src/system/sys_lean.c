@@ -1,10 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 #include <limits.h>
 #include <stddef.h>
 #include <errno.h>
+
+#include <stdbool.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -811,4 +812,35 @@ char* Focl_GetFileNameWithoutExt(const char* path)
     }
     
     return fullname;
+}
+
+void Focl_GetCurrentExecFilePath(char* buffer, size_t size)
+{
+    #ifdef _WIN32
+        GetModuleFileName(NULL, buffer, size);
+    #elif defined(__linux__)
+        ssize_t len = readlink("/proc/self/exe", buffer, size - 1);
+        if (len != -1)
+        {
+            buffer[len] = '\0';
+        }
+    #elif defined(__APPLE__)
+        uint32_t bufsize = (uint32_t)size;
+        _NSGetExecutablePath(buffer, &bufsize);
+    #else
+        // 其他 Unix 可尝试 getexecname() 或 argv[0]（不推荐）
+        strncpy(buffer, ".", size);
+    #endif
+
+    // 统一截取目录部分
+#ifdef _WIN32
+    char PATH_SEP = '\\';
+#else
+    char PATH_SEP = '/';
+#endif
+    char* lastSep = strrchr(buffer, PATH_SEP);
+    if (lastSep != NULL)
+    {
+        *(lastSep + 1) = '\0';
+    }
 }

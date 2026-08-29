@@ -2326,7 +2326,38 @@ void freeFoclEnvPool(Focl_EnvPool* envPool, Focl_Context* context)
 
 /* CONTEXT */
 
-Focl_Context* createFoclContext(FILE* outpotfPtr)
+/* All the args will be string type */
+void Focl_ctxInitArgs(Focl_Context* ctx, int argc, char** argv)
+{
+    for (int i = 0; i < argc; i++)
+    {
+        printf("Arg%d: %s \n", i, argv[i]);
+    }
+    Focl_String* argcName = FoclStringPoolAlloc(ctx->strPool);
+    FoclStrAssignStr(argcName, ctx->globalEnv->envNamespace);
+    FoclStrAppend(argcName, "argc");
+    
+    Focl_Object* argcObj = FoclObjWithNoStringPoolAlloc(ctx->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+    FoclObjectBoxInt(argcObj, (Focl_Obj_Int)argc - 1);
+    
+    LinkObjectWithName(ctx, argcObj, argcName);
+    
+    Focl_String* argvName = FoclStringPoolAlloc(ctx->strPool);
+    FoclStrAssignStr(argvName, ctx->globalEnv->envNamespace);
+    FoclStrAppend(argvName, "argv");
+    
+    Focl_Object* argvObj = FoclCmpdObjPoolAlloc(ctx->cmpdObjPool, ctx->objVecPool);
+    LinkObjectWithName(ctx, argvObj, argvName);
+    
+    for (int i = 1; i < argc; i++)
+    {
+        Focl_Object* obj = FoclStringObjPoolAlloc(ctx->strObjPool, ctx->strPool, FOCL_OBJ_TYPE_STR);
+        FoclStrAssign(FoclObjectGetString(obj), argv[i]);
+        FoclObjectRetain(obj);
+        FoclVectorPushBack(FoclObjectGetVector(argvObj), &obj);
+    }
+}
+Focl_Context* createFoclContext(FILE* outpotfPtr, int argc, char** argv)
 {
     Focl_Context* context = (Focl_Context*)Focl_malloc(sizeof(Focl_Context));
     context->strPool = createFoclStringPool();
@@ -2347,6 +2378,7 @@ Focl_Context* createFoclContext(FILE* outpotfPtr)
     context->hasExitBuf = false;
     context->hasReturnBuf = false;
     context->returnValue = NULL;
+    Focl_ctxInitArgs(context, argc, argv);
     return context;
 }
 void freeFoclContext(Focl_Context* context)
@@ -2361,11 +2393,11 @@ void freeFoclContext(Focl_Context* context)
     }
     while (cEnv != NULL);
     freeFoclEnvPool(context->envPool, context);
+    freeFoclObjTablePool(context->objTablePool, context);
     freeFoclCmpdObjPool(context->cmpdObjPool, context);
     freeFoclStringObjPool(context->strObjPool, context->strPool);
     freeFoclObjWithNoStringPool(context->objWithNoStrPool);
     freeFoclCommandTablePool(context->cmdTablePool, context);
-    freeFoclObjTablePool(context->objTablePool, context);
     freeFoclStringPool(context->strPool);
     freeFoclVectorPool(context->objVecPool);
     freeFoclIOBuffer(context->outBuffer);
@@ -3720,14 +3752,18 @@ void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer, Focl_StringPool* 
     }
 }
 
+/* the obj type must be string! */
+void FoclObjectGets(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Object* obj)
+{
+    Focl_String* input = FoclStringPoolAlloc(strPool);
+    Focl_getline(stdin, &(input->data), &(input->length), &(input->capacity));
+    FoclStrAssignStr(FoclObjectGetString(obj), input);
+    FoclStringPoolFree(input, strPool);
+}
 Focl_Object* FoclObjectScan(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Object* obj)
 {
     Focl_String* input = FoclStringPoolAlloc(strPool);
     Focl_getline(stdin, &(input->data), &(input->length), &(input->capacity));
-    if (input == NULL)
-    {
-        return FoclObjectError(strObjPool, strPool, FOCL_ERR_READ_ERR_STDIN);
-    }
     Focl_Object* result = obj;
     if (Focl_isInteger(FoclStrCStr(input)))
     {
@@ -3974,4 +4010,13 @@ Focl_Object* Focl_eval(Focl_Context* context, const char* Cstr)
     Focl_Object* result = Focl_parseCommandSequence(context, &strView);
     FoclStringPoolFree(str, context->strPool);
     return result;
+}
+int Focl_evalWithExitCode(Focl_Context* context, const char* Cstr)
+{
+    Focl_String* str = FoclStringPoolAlloc(context->strPool);
+    FoclStrAssign(str, Cstr);
+    Focl_StringView strView = {str->length, str->data};
+    Focl_Object* result = Focl_parseCommandSequence(context, &strView);
+    FoclStringPoolFree(str, context->strPool);
+    return (int)FoclObjectUnboxInt(result);
 }

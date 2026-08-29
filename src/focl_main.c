@@ -60,55 +60,63 @@ int main(int argc, char* argv[])
     SetConsoleCP(65001);
     SetConsoleOutputCP(65001);
 #endif
-    Focl_Context* ctx = createFoclContext(stdout);
-    Focl_RegisterBuiltinCommands(ctx);
+    
     int exitCode = 0;
 #ifdef NEED_PROFILE
     bool shouldExecFoclrc = true;
 #endif
+
     bool shouldEnterREPL = true;
     char* fileToOpen = NULL;
+    int filePtrIdx = -1;
     if (argc > 1)
     {
         for (int i = 1; i < argc; i++)
         {
-            if (strcmp(argv[i], "--norc") == 0)
+            if (fileToOpen == NULL)
             {
-            #ifdef NEED_PROFILE
-                shouldExecFoclrc = false;
-            #endif
-            }
-            else if (strcmp(argv[i], "-c") == 0)
-            {
-                if (argc > i + 1)
+                if (strcmp(argv[i], "--norc") == 0)
                 {
-                    i++;
-                    FoclObjectRelease(Focl_eval(ctx, argv[i]), ctx);
+                #ifdef NEED_PROFILE
+                    shouldExecFoclrc = false;
+                #endif
+                }
+                else if (strcmp(argv[i], "-c") == 0)
+                {
+                    if (argc > i + 1)
+                    {
+                        i++;
+                        Focl_Context* ctx = createFoclContext(stdout, argc - i, argv + i);
+                        Focl_RegisterBuiltinCommands(ctx);
+                        /* no free function, because it will exit soon. */
+                        return Focl_evalWithExitCode(ctx, argv[i]);;
+                    }
+                    else
+                    {
+                        printf("Cannot get content from command line.\n");
+                        shouldEnterREPL = false;
+                        exitCode = 1;
+                    }
+                }
+                else if (strcmp(argv[i], "-v") == 0)
+                {
                     shouldEnterREPL = false;
                     fileToOpen = NULL;
+                    printf("Fast Optimized Command Language\nBuild time:" __DATE__", "__TIME__ "\n");
+                    exitCode = 0;
                 }
                 else
                 {
-                    printf("Cannot get content from command line.\n");
+                    fileToOpen = argv[i];
                     shouldEnterREPL = false;
-                    exitCode = 1;
+                    filePtrIdx = i;
                 }
-            }
-            else if (strcmp(argv[i], "-v") == 0)
-            {
-                shouldEnterREPL = false;
-                fileToOpen = NULL;
-                printf("Fast Optimized Command Language\nBuild time:" __DATE__", "__TIME__ "\n");
-                exitCode = 0;
-            }
-            else
-            {
-                fileToOpen = argv[i];
-                shouldEnterREPL = false;
             }
         }
     }
-    
+    int startOfArgv = (filePtrIdx > 0) ? filePtrIdx : 1;
+    Focl_Context* ctx = createFoclContext(stdout, argc - startOfArgv, argv + startOfArgv);
+    Focl_RegisterBuiltinCommands(ctx);
 #ifdef NEED_PROFILE
     if (shouldExecFoclrc)
     {

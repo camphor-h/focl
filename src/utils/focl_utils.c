@@ -60,11 +60,41 @@ Focl_Object* buildIn_gets(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
     }
+    if (obj->type != FOCL_OBJ_TYPE_STR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, "value type must be string.");
+    }
+    FoclObjectGets(context->strObjPool, context->strPool, obj);
+    return FoclObjPoolAllocAssign(context, obj);
+}
+Focl_Object* buildIn_scan(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 2)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* inPipeObj;
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, inPipeObj, context->strObjPool, context->strPool);
+    Focl_String* inPipe = FoclObjectGetString(inPipeObj);
+    if (FoclStrComp(inPipe, "stdin") != 0)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
+    }
+    Focl_Object* varStrObj;
+    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 1, varStrObj, context->strObjPool, context->strPool);
+    Focl_String* varStr = FoclObjectGetString(varStrObj);
+    Focl_Object* obj = Focl_FindObject(context->curEnv, context->strPool, varStr);
+    if (obj == FOCL_OBJECT_ERROR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+    }
     Focl_Object* scanRet = FoclObjectScan(context->strObjPool, context->strPool, obj);
     if (scanRet->type == FOCL_OBJ_TYPE_ERROR)
     {
         return scanRet;
     }
+    FoclObjectRelease(scanRet, context);
     return FoclObjPoolAllocAssign(context, obj);
 }
 Focl_Object* buildIn_set(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
@@ -1204,6 +1234,7 @@ void Focl_RegisterUtilsCommand(Focl_Context* context)
 {
     FoclRegisterCommand(context, "puts", buildIn_puts);
     FoclRegisterCommand(context, "gets", buildIn_gets);
+    FoclRegisterCommand(context, "scan", buildIn_scan);
     FoclRegisterCommand(context, "set", buildIn_set);
     FoclRegisterCommand(context, "unset", buildIn_unset);
     FoclRegisterCommand(context, "incr", buildIn_incr);

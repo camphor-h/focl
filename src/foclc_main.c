@@ -43,7 +43,7 @@ int64_t Focl_getpid()
     "   SetConsoleCP(65001);\n" \
     "   SetConsoleOutputCP(65001);\n" \
     "#endif\n"\
-    "   Focl_Context* ctx = createFoclContext(stdout);\n" \
+    "   Focl_Context* ctx = createFoclContext(stdout, argc, argv);\n" \
     "   Focl_RegisterBuiltinCommands(ctx);\n" \
     "   FoclObjectRelease(Focl_eval(ctx, \""
 
@@ -225,10 +225,13 @@ int main(int argc, char* argv[])
 
     if (!keepSourceOnly)
     {
+        char compilerLib[PATH_MAX];
+        Focl_GetCurrentExecFilePath(compilerLib, PATH_MAX);
+        strcat(compilerLib, "libfocl.a");
     #ifndef _WIN32
-        if (Focl_isFileExist("libfocl.a") == false && Focl_isFileExist("/usr/lib/focl/libfocl.a") == false && Focl_isFileExist("/usr/local/lib/focl/libfocl.a"))
+        if (Focl_isFileExist(compilerLib) == false && Focl_isFileExist("/usr/lib/focl/libfocl.a") == false && Focl_isFileExist("/usr/local/lib/focl/libfocl.a") == false)
     #else
-        if (Focl_isFileExist("libfocl.a") == false)
+        if (Focl_isFileExist(compilerLib) == false)
     #endif
         {
             printf("Error: \"libfocl.a\" must be in the searching directory.\n");
