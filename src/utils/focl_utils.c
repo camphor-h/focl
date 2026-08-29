@@ -232,7 +232,7 @@ Focl_Object* buildIn_if(Focl_Context* context, Focl_Vector* objVec, Focl_Command
             Focl_Object* execBlockObj;
             Focl_String* execBlockStr;
             Focl_StringView execBlock;
-            FOCL_OBJ_VEC_AT_AS_STRING_VIEW(objVec, i, execBlockObj, execBlockStr, execBlock, context->strObjPool, context->strPool);
+            FOCL_OBJ_VEC_AT_AS_STRING_VIEW(objVec, i + 1, execBlockObj, execBlockStr, execBlock, context->strObjPool, context->strPool);
             return Focl_parseBlock(context, &execBlock);
         }
         FoclObjectRelease(condResult, context);
