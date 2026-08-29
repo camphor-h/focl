@@ -32,7 +32,7 @@ Focl_Object* sys_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
         {
             return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
         }
-        if (!Focl_isFileExist(FoclStrCStr(FoclObjectGetString(targetObj))))
+        if (Focl_isFileExist(FoclStrCStr(FoclObjectGetString(targetObj))))
         {
             return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_TRUE);
         }

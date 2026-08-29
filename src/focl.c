@@ -2066,18 +2066,17 @@ void FoclHashTablePoolFree(Focl_HashTable* htable, Focl_HashTablePool* htablePoo
 {
     FoclPoolFree((void*)htable, htablePool);
 }
-void freeFoclHashTablePool(Focl_HashTablePool* hTablePool, Focl_Context* context)
+void freeFoclHashTablePool(Focl_HashTablePool* hTablePool, Focl_Context* context, Focl_ValueOpDt* valueOpDt)
 {
     Focl_KeyOpDt keyOpDt_ = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
-    Focl_ValueOpDt valueOpDt_ = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
-    FoclHashTableOpDtCtx dtCtx = {.keyOpDt = &keyOpDt_, .valueOpDt = &valueOpDt_};
+    FoclHashTableOpDtCtx dtCtx = {.keyOpDt = &keyOpDt_, .valueOpDt = &valueOpDt};
     Focl_TypeOpDt opDt = {.func = FoclHashTableOpDtVoid, .ctx = &dtCtx};
     freeFoclPool(hTablePool, &opDt);
 }
 
 Focl_ObjTablePool* createFoclObjTablePool()
 {
-    return createFoclHashTablePool(FOCL_OBJ_TABLE_INIT_CAPACITY, FOCL_OBJ_TABLE_INIT_CAPACITY);
+    return createFoclHashTablePool(FOCL_OBJ_TABLE_INIT_CAPACITY, FOCL_OBJ_TABLE_LOAD_FACTOR);
 }
 Focl_ObjTable* FoclObjTablePoolAlloc(Focl_ObjTablePool* objTablePool, Focl_Context* context)
 {
@@ -2089,7 +2088,8 @@ void FoclObjTablePoolFree(Focl_ObjTable* objTable, Focl_ObjTablePool* objTablePo
 }
 void freeFoclObjTablePool(Focl_ObjTablePool* objTablePool, Focl_Context* context)
 {
-    freeFoclHashTablePool(objTablePool, context);
+    Focl_ValueOpDt valueOpDt_ = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
+    freeFoclHashTablePool(objTablePool, context, &valueOpDt_);
 }
 
 Focl_CommandTablePool* createFoclCommandTablePool()
@@ -2106,7 +2106,8 @@ void FoclCommandTablePoolFree(Focl_CommandTable* cmdTable, Focl_CommandTablePool
 }
 void freeFoclCommandTablePool(Focl_CommandTablePool* cmdTablePool, Focl_Context* context)
 {
-    freeFoclHashTablePool(cmdTablePool, context);
+    Focl_ValueOpDt valueOpDt_ = {.ctx = context, .func = FoclCommandOpDtVoid};
+    freeFoclHashTablePool(cmdTablePool, context, &valueOpDt_);
 }
 
 /* HASH TABLE POOL */
@@ -2400,6 +2401,7 @@ void freeFoclContext(Focl_Context* context)
     freeFoclCommandTablePool(context->cmdTablePool, context);
     freeFoclStringPool(context->strPool);
     freeFoclVectorPool(context->objVecPool);
+    freeFoclVectorPool(context->strVecPool);
     freeFoclIOBuffer(context->outBuffer);
     Focl_free(context);
 }
@@ -3583,6 +3585,7 @@ Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* str
     Focl_Object* cmdObj = getFoclObjectWithStringView(context, &cmdView);
     if (cmdObj->type != FOCL_OBJ_TYPE_STR)
     {
+        FoclObjectRelease(cmdObj, context);
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
     }
     
@@ -3819,6 +3822,7 @@ Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
             Focl_StringView arg = getNextWord(&remaining);
             if (arg.strPtr == NULL || arg.len == 0)
             {
+                FoclStringPoolFree(argTmpStr, context->strPool);
                 retValue = FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
                 goto exitChildEnv;
             }
@@ -4018,5 +4022,7 @@ int Focl_evalWithExitCode(Focl_Context* context, const char* Cstr)
     Focl_StringView strView = {str->length, str->data};
     Focl_Object* result = Focl_parseCommandSequence(context, &strView);
     FoclStringPoolFree(str, context->strPool);
-    return (int)FoclObjectUnboxInt(result);
+    int retValue = (int)FoclObjectUnboxInt(result);
+    FoclObjectRelease(result, context);
+    return retValue;
 }
