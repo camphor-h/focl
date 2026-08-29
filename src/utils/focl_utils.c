@@ -1008,7 +1008,7 @@ Focl_Object* buildIn_string(Focl_Context* context, Focl_Vector* objVec, Focl_Com
         tmpBuf[byteLen] = '\0';
         retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
         FoclStrAssign(FoclObjectGetString(retValue), tmpBuf);
-        free(tmpBuf);
+        Focl_free(tmpBuf);
     }
     else if (FoclStrComp(FoclObjectGetString(childCmdObj), "compare") == 0)
     {
@@ -1171,7 +1171,8 @@ Focl_Object* buildIn_mcheck(Focl_Context* context, Focl_Vector* objVec, Focl_Com
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    FoclIOBufferPrintf(context->outBuffer, "Malloced:%lld Bytes, Realloced:%lld Bytes\n", focl_malloced_, focl_realloced_);
+    FoclIOBufferPrintf(context->outBuffer, "Malloced:%zu Bytes, Realloced:%zu Bytes, Freed:%zu Bytes\n", focl_malloced_, focl_realloced_, focl_freed_);
+    FoclIOBufferPrintf(context->outBuffer, "Current heap memory: %zu\n", focl_malloced_ - focl_freed_);
     return FoclObjectVoid(context->strObjPool, context->strPool);
 }
 #endif

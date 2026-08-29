@@ -47,8 +47,37 @@ void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_String
 Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView);
 
 #ifdef MEMORY_ALLOC_CHECK
+#if defined(__GLIBC__) && (__GLIBC__ >= 2)
+    #include <malloc.h>
+    #define FOCL_GET_PTR_ALLOCATED_SIZE(ptr) malloc_usable_size(ptr)
+
+#elif defined(__APPLE__) && defined(__MACH__)
+    #include <malloc/malloc.h>
+    #define FOCL_GET_PTR_ALLOCATED_SIZE(ptr) malloc_size(ptr)
+
+#elif defined(__FreeBSD__)
+    #include <malloc_np.h>
+    #define FOCL_GET_PTR_ALLOCATED_SIZE(ptr) malloc_size(ptr)
+
+#elif defined(__NetBSD__)
+    #include <malloc.h>
+    #define FOCL_GET_PTR_ALLOCATED_SIZE(ptr) malloc_size(ptr)
+
+#elif defined(_WIN32) || defined(_WIN64)
+    #include <malloc.h>
+    #define FOCL_GET_PTR_ALLOCATED_SIZE(ptr) _msize(ptr)
+
+#else
+    #warning "Unknown platform, FOCL_GET_PTR_ALLOCATED_SIZE() returns 0"
+#endif
+#endif
+
+#ifdef MEMORY_ALLOC_CHECK
 size_t focl_malloced_ = 0;
 size_t focl_realloced_ = 0;
+#ifdef FOCL_GET_PTR_ALLOCATED_SIZE
+size_t focl_freed_ = 0;
+#endif
 #endif
 
 void* Focl_malloc(size_t size)
@@ -89,6 +118,13 @@ void* Focl_calloc(size_t itemCount, size_t itemSize)
         exit(EXIT_FAILURE);
     }
     return ptr;
+}
+void Focl_free(void* ptr)
+{
+#ifdef FOCL_GET_PTR_ALLOCATED_SIZE
+    focl_freed_ += FOCL_GET_PTR_ALLOCATED_SIZE(ptr);
+#endif
+    free(ptr);
 }
 
 /* STRING */
@@ -344,8 +380,8 @@ void FoclStrClear(Focl_String* str)
 }
 void freeFoclString(Focl_String* str)
 {
-    free(str->data);
-    free(str);
+    Focl_free(str->data);
+    Focl_free(str);
 }
 
 void FoclStringOpCt(Focl_String* str, size_t iCapacity)
@@ -363,7 +399,7 @@ void FoclStringOpCtVoid(void* str, void* ctx)
 }
 void FoclStringOpDt(Focl_String* str)
 {
-    free(str->data);
+    Focl_free(str->data);
 }
 void FoclStringOpDtVoid(void* str, void* ctx)
 {
@@ -1014,8 +1050,8 @@ void freeFoclVector(Focl_Vector* vec, Focl_TypeOpDt* opDt) /* If NULL, won't des
             opDt->func((uint8_t*)vec->data + i * itemSize_, opDt->ctx);
         }
     }
-    free(vec->data);
-    free(vec);
+    Focl_free(vec->data);
+    Focl_free(vec);
 }
 
 typedef struct FoclVectorOpCtCtx
@@ -1046,7 +1082,7 @@ void FoclVectorOpDt(Focl_Vector* vec, Focl_TypeOpDt* opDt) /* If NULL, won't des
             opDt->func((uint8_t*)vec->data + i * itemSize_, opDt->ctx);
         }
     }
-    free(vec->data);
+    Focl_free(vec->data);
 }
 void FoclVectorOpDtVoid(void* vec, void* ctx)
 {
@@ -1080,7 +1116,7 @@ void freeFoclHashTableUnit(Focl_HashTableUnit* unit, Focl_KeyOpDt* keyOpDt, Focl
     {
         valueOpDt->func(unit->value, valueOpDt->ctx);
     }
-    free(unit);
+    Focl_free(unit);
 }
 
 Focl_HashTable* createFoclHashTable(size_t iCapacity, float loadFactor_, Focl_HashFunc hashFunc_)
@@ -1117,7 +1153,7 @@ void FoclHashTableRehash(Focl_HashTable* table)
         }
     }
     table->rehashLimit = (size_t)(table->loadFactor * table->capacity) + 1;
-    free(oldBuckets);
+    Focl_free(oldBuckets);
 }
 void FoclHashTableInsert(Focl_HashTable* table, void* key, void* value, KeyCompareFunc keyCompareFunc, Focl_KeyOpDt* keyOpDt, Focl_ValueOpDt* valueOpDt)
 {
@@ -1171,7 +1207,7 @@ void FoclHashTableDelete(Focl_HashTable* table, void* key, KeyCompareFunc keyCom
                 }
                 freeFoclHashTableUnit(current, keyOpDt, valueOpDt);
                 table->size--;
-                /* won't need to free(current) again, because it was free in freeFoclHashTableUnit() */
+                /* won't need to Focl_free(current) again, because it was Focl_free in freeFoclHashTableUnit() */
                 return;
             }
             prev = current;
@@ -1193,7 +1229,7 @@ void FoclHashTableDelete(Focl_HashTable* table, void* key, KeyCompareFunc keyCom
                     prev->next = current->next;
                 }
                 table->size--;
-                free(current);
+                Focl_free(current);
                 return;
             }
             prev = current;
@@ -1214,6 +1250,24 @@ void* FoclHashTableFind(Focl_HashTable* table, void* key, KeyCompareFunc keyComp
         current = current->next;
     }
     return NULL;
+}
+void FoclHashTableClear(Focl_HashTable* table, Focl_KeyOpDt* keyOpDt, Focl_ValueOpDt* valueOpDt)
+{
+    Focl_HashTableUnit* unit;
+    Focl_HashTableUnit* next;
+
+    for (size_t i = 0; i < table->capacity; i++)
+    {
+        unit = table->buckets[i];
+        while (unit != NULL)
+        {
+            next = unit->next;
+            freeFoclHashTableUnit(unit, keyOpDt, valueOpDt);
+            unit = next;
+        }
+        table->buckets[i] = NULL;
+    }
+    table->size = 0;
 }
 void freeFoclHashTable(Focl_HashTable* table, Focl_KeyOpDt* keyOpDt, Focl_ValueOpDt* valueOpDt)
 {
@@ -1240,13 +1294,97 @@ void freeFoclHashTable(Focl_HashTable* table, Focl_KeyOpDt* keyOpDt, Focl_ValueO
             while (unit != NULL)
             {
                 next = unit->next;
-                free(unit);
+                Focl_free(unit);
                 unit = next;
             }
         }
     }
-    free(table->buckets);
-    free(table);
+    Focl_free(table->buckets);
+    Focl_free(table);
+}
+
+typedef struct FoclHashTableOpCtCtx
+{
+    size_t initCapacity;
+    float loadFactor;
+    Focl_HashFunc hashFunc;
+}FoclHashTableOpCtCtx;
+
+void FoclHashTableOpCt(Focl_HashTable* htable, FoclHashTableOpCtCtx* opCtCtx)
+{
+    size_t iCapacity = opCtCtx->initCapacity;
+    float loadFactor_ = opCtCtx->loadFactor;
+    Focl_HashFunc hashFunc_ = opCtCtx->hashFunc;
+    htable->buckets = (Focl_HashTableUnit**)Focl_calloc(iCapacity, sizeof(Focl_HashTableUnit*));
+    htable->capacity = iCapacity;
+    htable->size = 0;
+    htable->loadFactor = loadFactor_;
+    htable->hashFunc = hashFunc_;
+    htable->rehashLimit = (size_t)(loadFactor_ * iCapacity) + 1;
+}
+void FoclHashTableOpCtVoid(void* htable, void* ctx)
+{
+    FoclHashTableOpCt(htable, ctx);
+}
+
+typedef struct FoclHashTableOpDtCtx
+{
+    Focl_KeyOpDt* keyOpDt;
+    Focl_ValueOpDt* valueOpDt;
+}FoclHashTableOpDtCtx;
+
+void FoclHashTableOpDt(Focl_HashTable* htable, FoclHashTableOpDtCtx* opDtCtx)
+{
+    Focl_KeyOpDt* keyOpDt_ = opDtCtx->keyOpDt;
+    Focl_ValueOpDt* valueOpDt_ = opDtCtx->valueOpDt;
+    Focl_HashTableUnit* unit;
+    Focl_HashTableUnit* next;
+    if (keyOpDt_ != NULL || valueOpDt_ != NULL)
+    {
+        for (size_t i = 0; i < htable->capacity; i++)
+        {
+            unit = htable->buckets[i];
+            while (unit != NULL)
+            {
+                next = unit->next;
+                freeFoclHashTableUnit(unit, keyOpDt_, valueOpDt_);
+                unit = next;
+            }
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < htable->capacity; i++)
+        {
+            unit = htable->buckets[i];
+            while (unit != NULL)
+            {
+                next = unit->next;
+                Focl_free(unit);
+                unit = next;
+            }
+        }
+    }
+    Focl_free(htable->buckets);
+}
+void FoclHashTableOpDtVoid(void* htable, void* ctx)
+{
+    FoclHashTableOpDt(htable, ctx);
+}
+
+typedef struct FoclHashTableOpClCtx
+{
+    Focl_KeyOpDt* keyOpDt;
+    Focl_ValueOpDt* valueOpDt;
+}FoclHashTableOpClCtx;
+
+void FoclHashTableOpCl(Focl_HashTable* htable, FoclHashTableOpClCtx* opClCtx)
+{
+    FoclHashTableClear(htable, opClCtx->keyOpDt, opClCtx->valueOpDt);
+}
+void FoclHashTableOpClVoid(void* htable, void* ctx)
+{
+    FoclHashTableOpCl(htable, ctx);
 }
 
 /* HASH TABLE */
@@ -1287,9 +1425,9 @@ void freeFoclPoolBlock(Focl_PoolBlock* block, Focl_TypeOpDt* opDt)
             opDt->func((uint8_t*)block->data + i * block->itemSize, opDt->ctx);
         }
     }
-    free(block->freeStack);
-    free(block->data);
-    free(block);
+    Focl_free(block->freeStack);
+    Focl_free(block->data);
+    Focl_free(block);
 }
 Focl_Pool* createFoclPool(size_t itemSize_, size_t itemPerBlock_, size_t iBlockCount, Focl_TypeOpCt* opCt)
 {
@@ -1311,8 +1449,8 @@ void freeFoclPool(Focl_Pool* pool, Focl_TypeOpDt* opDt) /* Distinguish it from F
     {
         freeFoclPoolBlock(pool->blocks[i], opDt);
     }
-    free(pool->blocks);
-    free(pool);
+    Focl_free(pool->blocks);
+    Focl_free(pool);
 }
 void FoclPoolBlockExpand(Focl_Pool* pool, size_t newBlockCount, Focl_TypeOpCt* opCt)
 {
@@ -1435,7 +1573,7 @@ void FoclStringPoolFreeOpDtVoid(void* str, void* strPool)
 Focl_VectorPool* createFoclVectorPool(size_t lenOfElement)
 {
     Focl_VectorPool* vecPool = Focl_malloc(sizeof(Focl_VectorPool));
-    vecPool->elementLen = lenOfElement;
+    vecPool->elementSize = lenOfElement;
     FoclVectorOpCtCtx ctCtx = {.itemSize = lenOfElement, .iCapacity = FOCL_VECTOR_INIT_CAPACITY};
     Focl_TypeOpCt opCt = {.func = FoclVectorOpCtVoid, .ctx = &ctCtx};
     vecPool->pool = createFoclPool(sizeof(Focl_Vector), FOCL_VECTOR_POOL_ITEM_PER_BLOCK, FOCL_VECTOR_POOL_BLOCK_COUNT_INIT, &opCt);
@@ -1445,11 +1583,11 @@ void freeFoclVectorPool(Focl_VectorPool* vecPool)
 {
     Focl_TypeOpDt opDt = {.func = FoclVectorOpDtVoid, .ctx = NULL};
     freeFoclPool(vecPool->pool, &opDt);
-    free(vecPool);
+    Focl_free(vecPool);
 }
 Focl_Vector* FoclVectorPoolAlloc(Focl_VectorPool* vecPool)
 {
-    FoclVectorOpCtCtx ctCtx = {.itemSize = vecPool->elementLen, .iCapacity = FOCL_VECTOR_INIT_CAPACITY};
+    FoclVectorOpCtCtx ctCtx = {.itemSize = vecPool->elementSize, .iCapacity = FOCL_VECTOR_INIT_CAPACITY};
     Focl_TypeOpCt opCt = {.func = FoclVectorOpCtVoid, .ctx = &ctCtx};
     Focl_TypeOpCl opCl = {.func = FoclVectorOpClVoid, .ctx = NULL};
     Focl_Vector* vec = (Focl_Vector*)FoclPoolAllocEx(vecPool->pool, &opCt, &opCl);
@@ -1626,7 +1764,7 @@ void freeFoclObject(Focl_Object* obj, Focl_StringPool* strPool, Focl_VectorPool*
     {
         FoclVectorPoolFree(obj->as.vec, vecPool);
     }
-    free(obj);
+    Focl_free(obj);
 }
 void FoclObjectRetain(Focl_Object* obj)
 {
@@ -1897,23 +2035,93 @@ void freeFoclStringObjPool(Focl_StrObjPool* objPool, Focl_StringPool* strPool)
     Focl_TypeOpDt opDt = {.ctx = strPool, .func = FoclStringObjectOpDtVoid};
     freeFoclPool(objPool, &opDt);
 }
-void freeFoclCmpdObjPool(Focl_Context* ctx)
+void freeFoclCmpdObjPool(Focl_CmpdObjPool* cmpdObjPool, Focl_Context* ctx)
 {
     Focl_TypeOpDt opDt = {.ctx = ctx, .func = FoclCmpdObjectOpDtVoid};
-    freeFoclPool(ctx->cmpdObjPool, &opDt);
+    freeFoclPool(cmpdObjPool, &opDt);
 }
 
 /* OBJ POOL */
 
+/* HASH TABLE POOL */
+
+Focl_HashTablePool* createFoclHashTablePool(size_t iCapacity, float loadFactor_)
+{
+    FoclHashTableOpCtCtx ctCtx = {.hashFunc = hashDjb2AsArg, .initCapacity = iCapacity, .loadFactor = loadFactor_};
+    Focl_TypeOpCt opCt = {.func = FoclHashTableOpCtVoid, .ctx = &ctCtx};
+    return createFoclPool(sizeof(Focl_HashTable), FOCL_HASH_TABLE_POOL_ITEM_PER_BLOCK, FOCL_HASH_TABLE_POOL_BLOCK_COUNT_INIT, &opCt);
+}
+Focl_HashTable* FoclHashTablePoolAlloc(Focl_HashTablePool* htablePool, Focl_Context* context, size_t iCapacity, float loadFactor_) /* It will alloc hash table and clear it. */
+{
+    Focl_KeyOpDt keyOpDt_ = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
+    Focl_ValueOpDt valueOpDt_ = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
+    FoclHashTableOpCtCtx ctCtx = {.hashFunc = hashDjb2AsArg, .initCapacity = iCapacity, .loadFactor = loadFactor_};
+    FoclHashTableOpClCtx clCtx = {.keyOpDt = &keyOpDt_, .valueOpDt = &valueOpDt_};
+    Focl_TypeOpCt opCt = {.func = FoclHashTableOpCtVoid, .ctx = &ctCtx};
+    Focl_TypeOpCl opCl = {.func = FoclHashTableOpClVoid, .ctx = &clCtx};
+    Focl_HashTable* htable = (Focl_HashTable*)FoclPoolAllocEx(htablePool, &opCt, &opCl);
+    return htable;
+}
+void FoclHashTablePoolFree(Focl_HashTable* htable, Focl_HashTablePool* htablePool)
+{
+    FoclPoolFree((void*)htable, htablePool);
+}
+void freeFoclHashTablePool(Focl_HashTablePool* hTablePool, Focl_Context* context)
+{
+    Focl_KeyOpDt keyOpDt_ = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
+    Focl_ValueOpDt valueOpDt_ = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
+    FoclHashTableOpDtCtx dtCtx = {.keyOpDt = &keyOpDt_, .valueOpDt = &valueOpDt_};
+    Focl_TypeOpDt opDt = {.func = FoclHashTableOpDtVoid, .ctx = &dtCtx};
+    freeFoclPool(hTablePool, &opDt);
+}
+
+Focl_ObjTablePool* createFoclObjTablePool()
+{
+    return createFoclHashTablePool(FOCL_OBJ_TABLE_INIT_CAPACITY, FOCL_OBJ_TABLE_INIT_CAPACITY);
+}
+Focl_ObjTable* FoclObjTablePoolAlloc(Focl_ObjTablePool* objTablePool, Focl_Context* context)
+{
+    return FoclHashTablePoolAlloc(objTablePool, context, FOCL_OBJ_TABLE_INIT_CAPACITY, FOCL_OBJ_TABLE_INIT_CAPACITY);
+}
+void FoclObjTablePoolFree(Focl_ObjTable* objTable, Focl_ObjTablePool* objTablePool)
+{
+    FoclHashTablePoolFree(objTable, objTablePool);
+}
+void freeFoclObjTablePool(Focl_ObjTablePool* objTablePool, Focl_Context* context)
+{
+    freeFoclHashTablePool(objTablePool, context);
+}
+
+Focl_CommandTablePool* createFoclCommandTablePool()
+{
+    return createFoclHashTablePool(FOCL_COMMAND_TABLE_INIT_CAPACITY, FOCL_COMMAND_TABLE_LOAD_FACTOR);
+}
+Focl_CommandTable* FoclCommandTablePoolAlloc(Focl_CommandTablePool* cmdTablePool, Focl_Context* context)
+{
+    return FoclHashTablePoolAlloc(cmdTablePool, context, FOCL_COMMAND_TABLE_INIT_CAPACITY, FOCL_COMMAND_TABLE_LOAD_FACTOR);
+}
+void FoclCommandTablePoolFree(Focl_CommandTable* cmdTable, Focl_CommandTablePool* cmdTablePool)
+{
+    FoclHashTablePoolFree(cmdTable, cmdTablePool);
+}
+void freeFoclCommandTablePool(Focl_CommandTablePool* cmdTablePool, Focl_Context* context)
+{
+    freeFoclHashTablePool(cmdTablePool, context);
+}
+
+/* HASH TABLE POOL */
+
 /* OBJECT TABLE */
 
-Focl_ObjTable* createFoclObjTable()
-{
-    return createFoclHashTable(FOCL_OBJ_TABLE_INIT_CAPACITY, FOCL_OBJ_TABLE_LOAD_FACTOR, hashDjb2AsArg);
-}
 Focl_Object* FindObjectInTable(Focl_ObjTable* objTable, const Focl_String* strView)
 {
     return (Focl_Object*)FoclHashTableFind(objTable, (void*)strView, StrKeyCompare);
+}
+void FoclObjTableClear(Focl_ObjTable* objTable, Focl_Context* context)
+{
+    Focl_KeyOpDt keyOpDt_ = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
+    Focl_ValueOpDt valueOpDt_ = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
+    FoclHashTableClear(objTable, &keyOpDt_, &valueOpDt_);
 }
 void LinkObjectWithName(Focl_Context* context, Focl_Object* obj, const Focl_String* str)
 {
@@ -1923,21 +2131,10 @@ void LinkObjectWithName(Focl_Context* context, Focl_Object* obj, const Focl_Stri
     Focl_ValueOpDt valueOpDt = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
     FoclHashTableInsert(context->curEnv->objTable, strName, obj, StrKeyCompare, &keyOpDt, &valueOpDt);
 }
-void freeFoclObjTable(Focl_ObjTable* objTable, Focl_Context* context)
-{
-    /*
-     * So you may ask, why don't we just use context as the only arg? Well, that's because
-     * a "free" func is usually use itself's pointer (as "this" in cpp) as the first arg.
-     * and also... one day we may also "poolize" the obj table too. Not really, I mean
-     */
-    Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
-    Focl_ValueOpDt valueOpDt = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
-    freeFoclHashTable(objTable, &keyOpDt, &valueOpDt);
-}
 
 /* OBJECT TABLE */
 
-/* COMMAND TABLE */
+/* COMMAND */
 
 Focl_Command* createFoclCommandBuildIn(Focl_CommandFunc cmdFunc, Focl_StringPool* strPool, const char* cmdName)
 {
@@ -1971,7 +2168,7 @@ void freeFoclCommand(Focl_Command* cmd, Focl_StringPool* strPool)
     {
         FoclStringPoolFree(cmd->args, strPool);
     }
-    free(cmd);
+    Focl_free(cmd);
 }
 void FoclCommandOpDtVoid(void* cmd_, void* ctx)
 {
@@ -1987,18 +2184,19 @@ void FoclCommandOpDtVoid(void* cmd_, void* ctx)
     }
 }
 
-Focl_CommandTable* createFoclCommandTable()
-{
-    return createFoclHashTable(FOCL_COMMAND_TABLE_INIT_CAPACITY, FOCL_COMMAND_TABLE_LOAD_FACTOR, hashDjb2AsArg);
-}
+/* COMMAND */
+
+/* COMMAND TABLE */
+
 Focl_Command* FindCommandInTable(Focl_CommandTable* cmdTable, const Focl_String* str)
 {
     return (Focl_Command*)FoclHashTableFind(cmdTable, (void*)str, StrKeyCompare);
 }
-void freeFoclCommandTable(Focl_CommandTable* cmdTable, Focl_StringPool* strPool)
+void FoclCommandTableClear(Focl_CommandTable* cmdTable, Focl_Context* context)
 {
-    Focl_ValueOpDt valueOpDt = {.func = FoclCommandOpDtVoid, .ctx = strPool};
-    freeFoclHashTable(cmdTable, NULL, &valueOpDt);
+    Focl_KeyOpDt keyOpDt_ = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
+    Focl_ValueOpDt valueOpDt_ = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
+    FoclHashTableClear(cmdTable, &keyOpDt_, &valueOpDt_);
 }
 
 /* COMMAND TABLE */
@@ -2006,7 +2204,7 @@ void freeFoclCommandTable(Focl_CommandTable* cmdTable, Focl_StringPool* strPool)
 /* ENVIRONMENT */
 
 /* If parent_ is NULL, it will create a root(or global) environment. and also, if the parent_ is null, it will neglect the envName and keep using "::" */
-Focl_Environment* createFoclEnvironment(Focl_Environment* parent_, Focl_StringPool* strPool, Focl_VectorPool* strVecPool, char* envName)
+Focl_Environment* createFoclEnvironment(Focl_Environment* parent_, Focl_Context* context, char* envName)
 {
     Focl_Environment* env = (Focl_Environment*)Focl_malloc(sizeof(Focl_Environment));
     env->parent = parent_;
@@ -2018,22 +2216,29 @@ Focl_Environment* createFoclEnvironment(Focl_Environment* parent_, Focl_StringPo
     {
         env->level = 0;
     }
-    env->cmdTable = createFoclCommandTable();
-    env->objTable = createFoclObjTable();
-    env->envNamespace = FoclStringPoolAlloc(strPool);
+    env->cmdTable = FoclCommandTablePoolAlloc(context->cmdTablePool, context);
+    env->objTable = FoclObjTablePoolAlloc(context->objTablePool, context);
+    env->envNamespace = FoclStringPoolAlloc(context->strPool);
     if (parent_ != NULL)
     {
         FoclStrAssignStr(env->envNamespace, parent_->envNamespace);
         FoclStrAppend(env->envNamespace, envName);
     }
     FoclStrAppend(env->envNamespace, "::");
-    env->namespaceVec = FoclVectorPoolAlloc(strVecPool);
+    env->namespaceVec = FoclVectorPoolAlloc(context->strVecPool);
     return env;
+}
+void FoclEnvironmentClear(Focl_Environment* env, Focl_Context* context)
+{
+    FoclObjTableClear(env->objTable, context);
+    FoclCommandTableClear(env->cmdTable, context);
+    FoclStrClear(env->envNamespace);
+    FoclVectorClear(env->namespaceVec);
 }
 void freeFoclEnvironment(Focl_Environment* env, Focl_Context* context)
 {
-    freeFoclCommandTable(env->cmdTable, context->strPool);
-    freeFoclObjTable(env->objTable, context);
+    FoclCommandTablePoolFree(env->cmdTable, context->cmdTablePool);
+    FoclObjTablePoolFree(env->objTable, context->objTablePool);
     size_t nsCount = FoclVectorGetSize(env->namespaceVec);
     for (size_t i = 0; i < nsCount; i++)
     {
@@ -2042,7 +2247,79 @@ void freeFoclEnvironment(Focl_Environment* env, Focl_Context* context)
     }
     FoclVectorPoolFree(env->namespaceVec, context->strVecPool);
     FoclStringPoolFree(env->envNamespace, context->strPool);
-    free(env);
+    Focl_free(env);
+}
+
+/* If parent_ is NULL, it will create a root(or global) environment. and also, if the parent_ is null, it will neglect the envName and keep using "::" */
+void FoclEnvironmentOpCt(Focl_Environment* env, Focl_Context* context)
+{
+    env->cmdTable = FoclCommandTablePoolAlloc(context->cmdTablePool, context);
+    env->objTable = FoclObjTablePoolAlloc(context->objTablePool, context);
+    env->envNamespace = FoclStringPoolAlloc(context->strPool);
+    env->namespaceVec = FoclVectorPoolAlloc(context->strVecPool);
+}
+void FoclEnvironmentOpCtVoid(void* env, void* ctx)
+{
+    FoclEnvironmentOpCt(env, ctx);
+}
+void FoclEnvironmentOpDt(Focl_Environment* env, Focl_Context* context)
+{
+    FoclCommandTablePoolFree(env->cmdTable, context->cmdTablePool);
+    FoclObjTablePoolFree(env->objTable, context->objTablePool);
+    size_t nsCount = FoclVectorGetSize(env->namespaceVec);
+    for (size_t i = 0; i < nsCount; i++)
+    {
+        Focl_String* ns = *(Focl_String**)FoclVectorAtNoCheck(env->namespaceVec, i);
+        FoclStringPoolFree(ns, context->strPool);
+    }
+    FoclVectorPoolFree(env->namespaceVec, context->strVecPool);
+    FoclStringPoolFree(env->envNamespace, context->strPool);
+}
+void FoclEnvironmentOpDtVoid(void* env, void* ctx)
+{
+    FoclEnvironmentOpDt(env, ctx);
+}
+void FoclEnvironmentOpClVoid(void* env, void* ctx)
+{
+    FoclEnvironmentClear(env, ctx);
+}
+
+Focl_EnvPool* createFoclEnvPool(Focl_Context* context_)
+{
+    Focl_TypeOpCt opCt = {.func = FoclEnvironmentOpCtVoid, .ctx = context_};
+    return createFoclPool(sizeof(Focl_Environment), FOCL_ENV_POOL_ITEM_PER_BLOCK, FOCL_ENV_POOL_BLOCK_COUNT_INIT, &opCt);
+}
+Focl_Environment* FoclEnvPoolAlloc(Focl_EnvPool* envPool, Focl_Environment* parent_, Focl_Context* context_, char* envName_)
+{
+    Focl_TypeOpCt opCt = {.func = FoclEnvironmentOpCtVoid, .ctx = context_};
+    Focl_TypeOpCl opCl = {.func = FoclEnvironmentOpClVoid, .ctx = context_};
+
+    Focl_Environment* env = (Focl_Environment*)FoclPoolAllocEx(envPool, &opCt, &opCl);
+    env->parent = parent_;
+    if (parent_ != NULL)
+    {
+        env->level = parent_->level + 1;
+    }
+    else
+    {
+        env->level = 0;
+    }
+    if (parent_ != NULL)
+    {
+        FoclStrAssignStr(env->envNamespace, parent_->envNamespace);
+        FoclStrAppend(env->envNamespace, envName_);
+    }
+    FoclStrAppend(env->envNamespace, "::");
+    return env;
+}
+void FoclEnvPoolFree(Focl_Environment* env, Focl_EnvPool* envPool)
+{
+    FoclPoolFree((void*)env, envPool);
+}
+void freeFoclEnvPool(Focl_EnvPool* envPool, Focl_Context* context)
+{
+    Focl_TypeOpDt opDt = {.func = FoclEnvironmentOpDtVoid, .ctx = context};
+    freeFoclPool(envPool, &opDt);
 }
 
 /* ENVIRONMENT */
@@ -2055,11 +2332,14 @@ Focl_Context* createFoclContext(FILE* outpotfPtr)
     context->strPool = createFoclStringPool();
     context->objVecPool = createFoclVectorPool(sizeof(Focl_Object*));
     context->strVecPool = createFoclVectorPool(sizeof(Focl_String*));
+    context->objTablePool = createFoclObjTablePool();
+    context->cmdTablePool = createFoclCommandTablePool();
     context->objWithNoStrPool = createFoclObjWithNoStringPool();
     context->strObjPool = createFoclStringObjPool(context->strPool);
     context->cmpdObjPool = createFoclCmpdObjPool(context->objVecPool);
+    context->envPool = createFoclEnvPool(context);
     context->outBuffer = createFoclIOBuffer(outpotfPtr, FOCL_IOBUFFER_DEFAULT_SIZE);
-    context->globalEnv = createFoclEnvironment(NULL, context->strPool, context->strVecPool, NULL);
+    context->globalEnv = FoclEnvPoolAlloc(context->envPool, NULL, context, NULL);
     context->curEnv = context->globalEnv;
     context->exitCode = 0;
     context->hasBreakBuf = false;
@@ -2076,21 +2356,24 @@ void freeFoclContext(Focl_Context* context)
     do
     {
         pEnv = cEnv->parent;
-        freeFoclEnvironment(cEnv, context);
+        FoclEnvPoolFree(cEnv, context->envPool);
         cEnv = pEnv;
     }
     while (cEnv != NULL);
-    freeFoclCmpdObjPool(context);
+    freeFoclEnvPool(context->envPool, context);
+    freeFoclCmpdObjPool(context->cmpdObjPool, context);
     freeFoclStringObjPool(context->strObjPool, context->strPool);
     freeFoclObjWithNoStringPool(context->objWithNoStrPool);
+    freeFoclCommandTablePool(context->cmdTablePool, context);
+    freeFoclObjTablePool(context->objTablePool, context);
     freeFoclStringPool(context->strPool);
     freeFoclVectorPool(context->objVecPool);
     freeFoclIOBuffer(context->outBuffer);
-    free(context);
+    Focl_free(context);
 }
 void FoclContextCreateEnterChildEnv(Focl_Context* context, char* envName)
 {
-    Focl_Environment* childEnv = createFoclEnvironment(context->curEnv, context->strPool, context->strVecPool, envName);
+    Focl_Environment* childEnv = FoclEnvPoolAlloc(context->envPool, context->curEnv, context, envName);
     context->curEnv = childEnv;
 }
 void FoclContextExitFreeChildEnv(Focl_Context* context)
@@ -2098,7 +2381,7 @@ void FoclContextExitFreeChildEnv(Focl_Context* context)
     /* Well, maybe I should protect the system not leave the root env. But
        doesn't need. You should prevent it logically. */
     Focl_Environment* parentEnv = context->curEnv->parent;
-    freeFoclEnvironment(context->curEnv, context);
+    FoclEnvPoolFree(context->curEnv, context->envPool);
     context->curEnv = parentEnv;
 }
 
@@ -3343,8 +3626,8 @@ Focl_IOBuffer* createFoclIOBuffer(FILE* fptr_, int bufferSize)
 }
 void freeFoclIOBuffer(Focl_IOBuffer* ioBuffer)
 {
-    free(ioBuffer->buf);
-    free(ioBuffer);
+    Focl_free(ioBuffer->buf);
+    Focl_free(ioBuffer);
 }
 void FoclIOBufferFlushOut(Focl_IOBuffer* ioBuffer)
 {
@@ -3641,13 +3924,9 @@ int Focl_ExecFile(Focl_Context* ctx, const char* filename)
     }
 
     Focl_String* input = FoclStringPoolAlloc(ctx->strPool);
-    while (1)
+    while (feof(fp) == 0)
     {
         Focl_getline(fp, &(input->data), &(input->length), &(input->capacity));
-        if (input->length == 0)
-        {
-            break;
-        }
         if (buffer.length > 0)
         {
             FoclStrAppend(&buffer, "\n");

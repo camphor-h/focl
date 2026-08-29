@@ -225,9 +225,13 @@ int main(int argc, char* argv[])
 
     if (!keepSourceOnly)
     {
+    #ifndef _WIN32
+        if (Focl_isFileExist("libfocl.a") == false && Focl_isFileExist("/usr/lib/focl/libfocl.a") == false && Focl_isFileExist("/usr/local/lib/focl/libfocl.a"))
+    #else
         if (Focl_isFileExist("libfocl.a") == false)
+    #endif
         {
-            printf("Error: \"libfocl.a\" must be in the working directory.\n");
+            printf("Error: \"libfocl.a\" must be in the searching directory.\n");
             return 1;
         }
     }

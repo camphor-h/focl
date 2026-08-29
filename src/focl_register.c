@@ -21,12 +21,15 @@ void Focl_RegisterBuiltinCommands(Focl_Context* context)
 #ifdef FOCL_REGISTER_UTILS
     Focl_RegisterUtilsCommand(context);
 #endif
+
 #ifdef FOCL_REGISTER_MATH
     Focl_RegisterMathCommand(context);
 #endif
+
 #ifdef FOCL_REGISTER_SYS
     Focl_RegisterSystemCommand(context);
 #endif
+
 #ifdef FOCL_REGISTER_TERM
     Focl_RegisterTerminalCommand(context);
 #endif

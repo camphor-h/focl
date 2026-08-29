@@ -18,6 +18,7 @@ extern size_t focl_realloced_;
 #endif
 
 void* Focl_realloc(void* ptr, size_t size);
+void Focl_free(void* ptr);
 
 #ifdef NEED_PROFILE
 int execfoclrc(Focl_Context* ctx)
@@ -48,7 +49,7 @@ int execfoclrc(Focl_Context* ctx)
     {
         foclrcExecCode = Focl_ExecFile(ctx, rcpath);
     }
-    free(rcpath);
+    Focl_free(rcpath);
     return foclrcExecCode;
 }
 #endif
@@ -123,7 +124,7 @@ int main(int argc, char* argv[])
     if (shouldEnterREPL) /* REPL */
     {
     #ifdef MEMORY_ALLOC_CHECK
-        printf("Malloced:%lld Bytes, Realloced:%lld Bytes\n", focl_malloced_, focl_realloced_);
+        printf("Malloced:%zu Bytes, Realloced:%zu Bytes\n", focl_malloced_, focl_realloced_);
     #endif
         printf("Focl REPL\n");
         printf("Type \"exit\" to quit.\n");

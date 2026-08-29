@@ -57,11 +57,13 @@ extern "C"
 #ifdef MEMORY_ALLOC_CHECK
 extern size_t focl_malloced_;
 extern size_t focl_realloced_;
+extern size_t focl_freed_;
 #endif
 
 void* Focl_malloc(size_t size);
 void* Focl_realloc(void* ptr, size_t size);
 void* Focl_calloc(size_t itemCount, size_t itemSize);
+void Focl_free(void* ptr);
 
 typedef Focl_Obj_Int Focl_Obj_Bool;
 #define FOCL_OBJ_TRUE 1
@@ -134,7 +136,7 @@ void restoreFoclStringViewFromTempString(Focl_StringView* strView, char saved); 
 
 void FoclStrAssignView(Focl_String* dst, const Focl_StringView* view);
 
-#define FOCL_VECTOR_INIT_CAPACITY 32
+#define FOCL_VECTOR_INIT_CAPACITY 16
 
 typedef struct Focl_Vector
 {
@@ -174,12 +176,12 @@ typedef Focl_Pool Focl_StringPool;
 Focl_String* FoclStringPoolAlloc(Focl_StringPool* strPool); /* It will alloc string and clear it. */
 void FoclStringPoolFree(Focl_String* str, Focl_StringPool* strPool);
 
-#define FOCL_VECTOR_POOL_ITEM_PER_BLOCK 8
+#define FOCL_VECTOR_POOL_ITEM_PER_BLOCK 32
 #define FOCL_VECTOR_POOL_BLOCK_COUNT_INIT 2
 
 typedef struct Focl_VectorPool
 {
-    size_t elementLen;
+    size_t elementSize;
     Focl_Pool* pool;
 }Focl_VectorPool;
 
@@ -192,6 +194,19 @@ typedef struct Focl_VectorPool
 typedef Focl_Pool Focl_ObjWithNoStrPool;
 typedef Focl_Pool Focl_StrObjPool;
 typedef Focl_Pool Focl_CmpdObjPool;
+
+typedef Focl_Pool Focl_HashTablePool;
+
+typedef Focl_HashTablePool Focl_ObjTablePool;
+typedef Focl_HashTablePool Focl_CommandTablePool;
+
+#define FOCL_HASH_TABLE_POOL_ITEM_PER_BLOCK 8
+#define FOCL_HASH_TABLE_POOL_BLOCK_COUNT_INIT 2
+
+typedef Focl_Pool Focl_EnvPool;
+
+#define FOCL_ENV_POOL_ITEM_PER_BLOCK 4
+#define FOCL_ENV_POOL_BLOCK_COUNT_INIT 2
 
 typedef struct Focl_Object
 {
@@ -242,15 +257,40 @@ typedef struct Focl_HashTable
 void FoclHashTableDelete(Focl_HashTable* table, void* key, KeyCompareFunc keyCompareFunc, Focl_KeyOpDt* keyOpDt, Focl_ValueOpDt* valueOpDt);
 void FoclHashTableInsert(Focl_HashTable* table, void* key, void* value, KeyCompareFunc keyCompareFunc, Focl_KeyOpDt* keyOpDt, Focl_ValueOpDt* valueOpDt);
 
-#define FOCL_OBJ_TABLE_INIT_CAPACITY 64
+#define FOCL_OBJ_TABLE_INIT_CAPACITY 12
 #define FOCL_OBJ_TABLE_LOAD_FACTOR 0.75f
 
 typedef Focl_HashTable Focl_ObjTable;
 
-#define FOCL_COMMAND_TABLE_INIT_CAPACITY 128
+#define FOCL_COMMAND_TABLE_INIT_CAPACITY 64
 #define FOCL_COMMAND_TABLE_LOAD_FACTOR 0.85f
 
 typedef Focl_HashTable Focl_CommandTable;
+
+#define FOCL_CMPD_REG_TABLE_INIT_CAPACITY 12
+#define FOCL_CMPD_REG_TABLE_LOAD_FACTOR 0.85f
+
+typedef Focl_HashTable Focl_CmpdRegTable;
+
+#define FOCL_CMPD_REG_TABLE_INIT_CAPACITY 12
+#define FOCL_CMPD_REG_TABLE_LOAD_FACTOR 0.75f
+
+typedef Focl_HashTable Focl_CmpdTable;
+
+typedef struct Focl_Compound
+{
+    Focl_String* name;
+    union
+    {
+        Focl_Vector* vec;
+        Focl_HashTable* htable;
+    }as;
+    union
+    {
+        Focl_Object* (*vecAtFunc)(Focl_Vector* vec, Focl_Obj_Int idx);
+        Focl_HashTable* (*htableAtFunc)(Focl_HashTable* hTable, Focl_String* str);
+    }at;
+}Focl_Compound;
 
 typedef struct Focl_Environment
 {
@@ -262,7 +302,7 @@ typedef struct Focl_Environment
     Focl_Vector* namespaceVec; /* imported namespace vector */
 }Focl_Environment;
 
-#define FOCL_IOBUFFER_DEFAULT_SIZE 2048
+#define FOCL_IOBUFFER_DEFAULT_SIZE 1024
 
 typedef struct Focl_IOBuffer
 {
@@ -274,16 +314,19 @@ typedef struct Focl_IOBuffer
 
 typedef struct Focl_Context
 {
-    Focl_Environment* globalEnv;
-    Focl_Environment* curEnv;
     Focl_StringPool* strPool;
     Focl_VectorPool* objVecPool;
     Focl_VectorPool* strVecPool;
+    Focl_ObjTablePool* objTablePool;
+    Focl_CommandTablePool* cmdTablePool;
     Focl_Object* returnValue;
     Focl_ObjWithNoStrPool* objWithNoStrPool;
     Focl_StrObjPool* strObjPool;
     Focl_CmpdObjPool* cmpdObjPool;
+    Focl_EnvPool* envPool;
     Focl_IOBuffer* outBuffer; /* currently only have output buffer */
+    Focl_Environment* globalEnv;
+    Focl_Environment* curEnv;
     jmp_buf breakBuf;
     jmp_buf continueBuf;
     jmp_buf exitBuf;

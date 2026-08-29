@@ -3,7 +3,6 @@ CFLAGS = -Wall -Wextra
 LDFLAGS = -lm
 INCLUDES = -I./include
 PACK_CMD = -DFOCL_REGISTER_UTILS -DFOCL_REGISTER_MATH -DFOCL_REGISTER_SYS -DFOCL_REGISTER_TERM
-CONFIG_DEF =
 TARGET = focl
 TARGET_C = foclc
 LIBRARY = libfocl.a
@@ -31,6 +30,8 @@ endif
 OBJ_COMMON = $(addprefix $(OBJ_DIR)/, $(notdir $(SRC_COMMON:.c=.o)))
 OBJ_FOCL = $(OBJ_DIR)/focl_main.o
 OBJ_FOCLC = $(OBJ_DIR)/foclc_main.o
+
+-include local.mk
 
 .DEFAULT_GOAL := release
 
@@ -72,6 +73,8 @@ install: release
 	@echo "Installing $(TARGET) and $(TARGET_C) to /usr/local/bin"
 	@sudo cp $(TARGET) /usr/local/bin/
 	@sudo cp $(TARGET_C) /usr/local/bin/
+	@mkdir -p "/usr/local/lib/focl"
+	@sudo install -m644 $(LIBRARY) "/usr/local/lib/focl/"
 	@echo "Installation complete"
 
 clean:

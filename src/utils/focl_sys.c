@@ -126,7 +126,7 @@ Focl_Object* sys_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
         char* dirCStr = Focl_dirname(FoclStrCStr(FoclObjectGetString(targetObj)));
         retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
         FoclStrAssign(FoclObjectGetString(retValue), dirCStr);
-        free(dirCStr);
+        Focl_free(dirCStr);
     }
     else if (FoclStrComp(FoclObjectGetString(childCmdObj), "realpath") == 0)
     {
@@ -225,8 +225,8 @@ Focl_Object* sys_cp(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
         {
             FOCL_ERROBJ_ALLOC(retValue, context, FOCL_SYSERR_IS_A_DIR);
         }
-        free(realSrcPath);
-        free(realDstPath);
+        Focl_free(realSrcPath);
+        Focl_free(realDstPath);
     }
     else if (objVecSize == 3)
     {
@@ -244,8 +244,8 @@ Focl_Object* sys_cp(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
                 FOCL_ERROBJ_ALLOC(retValue, context, "Cannnot copy file.");
             }
             retValue = FoclObjectVoid(context->strObjPool, context->strPool);
-            free(realSrcPath);
-            free(realDstPath);
+            Focl_free(realSrcPath);
+            Focl_free(realDstPath);
         }
         else
         {
@@ -284,7 +284,7 @@ Focl_Object* sys_rm(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
         {
             FOCL_ERROBJ_ALLOC(retValue, context, FOCL_SYSERR_IS_A_DIR);
         }
-        free(realSrcPath);
+        Focl_free(realSrcPath);
     }
     else if (objVecSize == 2)
     {
@@ -303,7 +303,7 @@ Focl_Object* sys_rm(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
             {
                 retValue = FoclObjectVoid(context->strObjPool, context->strPool);
             }
-            free(realSrcPath);
+            Focl_free(realSrcPath);
         }
         else
         {
@@ -339,13 +339,13 @@ Focl_Object* sys_mv(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
         realDstPath = newPath;
         realDstPath[lenOfDstPath] = '/';
         memcpy(realDstPath + lenOfDstPath + 1, filename, lenOfFileName + 1);
-        free(filename);
+        Focl_free(filename);
     }
     else if (Focl_isFileExist(realDstPath))
     {
         FOCL_ERROBJ_ALLOC(retValue, context, "already had file with the same name.");
-        free(realSrcPath);
-        free(realDstPath);
+        Focl_free(realSrcPath);
+        Focl_free(realDstPath);
         return retValue;
     }
     
@@ -358,8 +358,8 @@ Focl_Object* sys_mv(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
         FOCL_ERROBJ_ALLOC(retValue, context, "Cannot move or rename file or directory.");
     }
     
-    free(realSrcPath);
-    free(realDstPath);
+    Focl_free(realSrcPath);
+    Focl_free(realDstPath);
     return retValue;
 }
 Focl_Object* sys_cat(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
@@ -398,7 +398,7 @@ Focl_Object* sys_cat(Focl_Context* context, Focl_Vector* objVec, Focl_Command* c
                     (void)fread(buffer, sizeof(char), fileSize, fp);
                     retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
                     FoclStrAssign(FoclObjectGetString(retValue), buffer);
-                    free(buffer);
+                    Focl_free(buffer);
                     fclose(fp);
                 }
             }
@@ -412,7 +412,7 @@ Focl_Object* sys_cat(Focl_Context* context, Focl_Vector* objVec, Focl_Command* c
     {
         FOCL_ERROBJ_ALLOC(retValue, context, FOCL_SYSERR_CANNOT_FIND_FILE);
     }
-    free(realSrcPath);
+    Focl_free(realSrcPath);
     return retValue;
 }
 Focl_Object* sys_edit(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)

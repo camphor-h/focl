@@ -6,6 +6,8 @@ There is only one circumstance under which users are required to open-source par
 
 When users modify Focl's code (including its built-in commands and core libraries) and publish their program with modified Focl embeded, they must make the modified portions publicly available with this License. Note that user-defined commands or additional components are not subject to this requirement.
 
+The portion concerning the built-in library linenoise is not covered under the terms of this license. Please refer to its own BSD-2-Clause license at https://github.com/antirez/linenoise/LICENSE.
+
 Disclaimer of Warranty:
 
     "This software is provided 'as is', without any express or implied warranties, including but not limited to the warranties of merchantability and fitness for a particular purpose. The author shall not be liable for any direct or indirect damages."

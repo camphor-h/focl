@@ -102,7 +102,7 @@ int Focl_REPL(Focl_Context* ctx)
         depth = 0;
     }
 #ifdef _WIN32
-    free(input);
+    Focl_free(input);
 #endif
 
     ctx->hasExitBuf = false;

@@ -38,6 +38,7 @@
 
 char* Focl_strdup(const char* src);
 void* Focl_malloc(size_t size);
+void Focl_free(void* ptr);
 
 #ifdef _WIN32
 int access(const char* filename, int accessMode)
@@ -152,7 +153,7 @@ char* Focl_realpath(const char* path, char* resolvedPath, size_t bufferSize)
 #endif
 }
 
-char* Focl_dirname(const char* path) /* free the return value! */
+char* Focl_dirname(const char* path) /* Focl_free the return value! */
 {
 #ifdef _WIN32
     char drive[_MAX_DRIVE];
@@ -184,7 +185,7 @@ char* Focl_dirname(const char* path) /* free the return value! */
     char *copy = Focl_strdup(path);
     char *dir = dirname(copy);
     char *result = Focl_strdup(dir);
-    free(copy);
+    Focl_free(copy);
     return result;
 #endif
 }
@@ -621,10 +622,10 @@ char* _Focl_normalizePath(const char* path, char* buffer, size_t bufferSize)
         }
         else
         {
-            free(home);
+            Focl_free(home);
             return NULL;
         }
-        free(home);
+        Focl_free(home);
     }
     else if (path[0] == '/' || path[0] == '\\')
     {
@@ -688,7 +689,7 @@ char* Focl_normalizePath(const char* path)
     
     if (!_Focl_normalizePath(path, buffer, PATH_MAX))
     {
-        free(buffer);
+        Focl_free(buffer);
         return NULL;
     }
     

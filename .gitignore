@@ -1,6 +1,8 @@
 build/
 *.focl
+!example/*.focl
 *.exe
 focl
 foclc
 libfocl.a
+local.mk
