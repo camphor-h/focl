@@ -262,7 +262,7 @@ void FoclHashTableInsert(Focl_HashTable* table, void* key, void* value, KeyCompa
 
 typedef Focl_HashTable Focl_ObjTable;
 
-#define FOCL_COMMAND_TABLE_INIT_CAPACITY 64
+#define FOCL_COMMAND_TABLE_INIT_CAPACITY 128
 #define FOCL_COMMAND_TABLE_LOAD_FACTOR 0.85f
 
 typedef Focl_HashTable Focl_CommandTable;
@@ -292,7 +292,7 @@ typedef struct Focl_Environment
     Focl_Vector* namespaceVec; /* imported namespace vector */
 }Focl_Environment;
 
-#define FOCL_IOBUFFER_DEFAULT_SIZE 1024
+#define FOCL_IOBUFFER_DEFAULT_SIZE 2048
 
 typedef struct Focl_IOBuffer
 {

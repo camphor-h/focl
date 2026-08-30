@@ -1,6 +1,6 @@
 set a 1
 set b 1
-while {$a <= 10000} {
+while {$a <= 100000} {
      puts "Hello: $a"
      incr a
 }

@@ -6,3 +6,5 @@ focl
 foclc
 libfocl.a
 local.mk
+gmon.out
+analysis.txt
