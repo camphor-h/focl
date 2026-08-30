@@ -31,5 +31,6 @@ char* Focl_GetPathLastName(const char *path); /* free the return value! */
 int Focl_execAndWait(const char* command, char* const argv[]);
 char* Focl_GetFileNameWithoutExt(const char* path); /* free the return value! */
 void Focl_GetCurrentExecFilePath(char* buffer, size_t size); /* return with the PATH_SEP in the last character */
+void Focl_sleepms(unsigned int ms);
 
 #endif

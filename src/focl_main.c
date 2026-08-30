@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <locale.h>
 
 #include "focl.h"
 #include "sys_lean.h"
@@ -60,7 +61,7 @@ int main(int argc, char* argv[])
     SetConsoleCP(65001);
     SetConsoleOutputCP(65001);
 #endif
-    
+    setlocale(LC_ALL, "");
     int exitCode = 0;
 #ifdef NEED_PROFILE
     bool shouldExecFoclrc = true;

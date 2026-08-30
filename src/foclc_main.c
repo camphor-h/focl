@@ -32,7 +32,7 @@ int64_t Focl_getpid()
     "#endif\n" \
     "typedef struct Focl_Object Focl_Object;\n" \
     "typedef struct Focl_Context Focl_Context;\n" \
-    "Focl_Context* createFoclContext(FILE* outpotfPtr);\n" \
+    "Focl_Context* createFoclContext(FILE* outpotfPtr, int argc, char** argv);\n" \
     "void Focl_RegisterBuiltinCommands(Focl_Context* context);\n" \
     "void freeFoclContext(Focl_Context* context);\n" \
     "void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);\n" \
@@ -166,6 +166,7 @@ int main(int argc, char* argv[])
     bool isOutputFileNameAlloced = false;
     const char* compileOption = COMPILE_RELEASE_OPTION;
     bool keepSourceOnly = false;
+    char libDir[PATH_MAX] = {0};
 
     if (argc < 2)
     {
@@ -225,14 +226,27 @@ int main(int argc, char* argv[])
 
     if (!keepSourceOnly)
     {
-        char compilerLib[PATH_MAX];
-        Focl_GetCurrentExecFilePath(compilerLib, PATH_MAX);
-        strcat(compilerLib, "libfocl.a");
+        bool libFound = false;
+        char libPath[PATH_MAX];
+        Focl_GetCurrentExecFilePath(libDir, PATH_MAX);
+        snprintf(libPath, sizeof(libPath), "%slibfocl.a", libDir);
+        if (Focl_isFileExist(libPath))
+        {
+            libFound = true;
+        }
     #ifndef _WIN32
-        if (Focl_isFileExist(compilerLib) == false && Focl_isFileExist("/usr/lib/focl/libfocl.a") == false && Focl_isFileExist("/usr/local/lib/focl/libfocl.a") == false)
-    #else
-        if (Focl_isFileExist(compilerLib) == false)
+        else if (Focl_isFileExist("/usr/lib/focl/libfocl.a"))
+        {
+            snprintf(libDir, sizeof(libDir), "/usr/lib/focl/");
+            libFound = true;
+        }
+        else if (Focl_isFileExist("/usr/local/lib/focl/libfocl.a"))
+        {
+            snprintf(libDir, sizeof(libDir), "/usr/local/lib/focl/");
+            libFound = true;
+        }
     #endif
+        if (!libFound)
         {
             printf("Error: \"libfocl.a\" must be in the searching directory.\n");
             return 1;
@@ -338,6 +352,7 @@ int main(int argc, char* argv[])
                                 if (tempFp == NULL)
                                 {
                                     printf("Error: Cannot open temporary file: %s\n", tempFile);
+                                    remove(tempFile);
                                     free(tempFile);
                                     retValue = 1;
                                 }
@@ -351,6 +366,7 @@ int main(int argc, char* argv[])
                                     if (tempFp == NULL)
                                     {
                                         printf("Error: Cannot open temporary file for reading: %s\n", tempFile);
+                                        remove(tempFile);
                                         free(tempFile);
                                         retValue = 1;
                                     }
@@ -361,6 +377,7 @@ int main(int argc, char* argv[])
                                         {
                                             printf("Error: Cannot create output C file: %s\n", outputCFile);
                                             fclose(tempFp);
+                                            remove(tempFile);
                                             free(tempFile);
                                             retValue = 1;
                                         }
@@ -376,13 +393,7 @@ int main(int argc, char* argv[])
                                             fclose(tempFp);
                                             
                                             printf("Generated C source file: %s\n", outputCFile);
-                                        #ifdef _WIN32
-                                            char delCmd[4096];
-                                            snprintf(delCmd, sizeof(delCmd), "del \"%s\"", tempFile);
-                                            system(delCmd);
-                                        #else
                                             remove(tempFile);
-                                        #endif
                                         }
                                     }
                                     free(tempFile);
@@ -390,11 +401,11 @@ int main(int argc, char* argv[])
                             }
                             else
                             {
-                                // 写入临时文件
                                 FILE* tempFp = fopen(tempFile, "w");
                                 if (tempFp == NULL)
                                 {
                                     printf("Error: Cannot open temporary file: %s\n", tempFile);
+                                    remove(tempFile);
                                     free(tempFile);
                                     retValue = 1;
                                 }
@@ -403,15 +414,10 @@ int main(int argc, char* argv[])
                                     fwrite(compileContent, 1, strlen(compileContent), tempFp);
                                     fclose(tempFp);
 
-                                    // 编译
                                     char cmdBuffer[4096];
                                     snprintf(cmdBuffer, sizeof(cmdBuffer),
-#ifdef _WIN32
-                                        "cc -x c %s \"%s\" -o \"%s\" -L. -lfocl && del \"%s\"",
-#else
-                                        "cc -x c %s \"%s\" -o \"%s\" -L. -lfocl && rm -f \"%s\"",
-#endif
-                                        compileOption, tempFile, outputFileName, tempFile);
+                                        "cc -x c %s \"%s\" -o \"%s\" -x none \"%slibfocl.a\"",
+                                        compileOption, tempFile, outputFileName, libDir);
 
                                     printf("Compiling...\n");
                                     printf("Command: %s\n", cmdBuffer);
@@ -427,6 +433,7 @@ int main(int argc, char* argv[])
                                         retValue = 1;
                                     }
 
+                                    remove(tempFile);
                                     free(tempFile);
                                 }
                             }

@@ -110,7 +110,7 @@ Focl_Object* buildIn_set(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
     Focl_Object* src = FoclObjVecAt(objVec, 1);
     if (src->type == FOCL_OBJ_TYPE_ERROR)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+        return FoclObjectError(context->strObjPool, context->strPool, "Couldn't use a error type object to assign.");
     }
     Focl_Object* obj = Focl_FindObject(context->curEnv, context->strPool, strName);
     if (obj == FOCL_OBJECT_ERROR)
@@ -1234,6 +1234,18 @@ Focl_Object* buildIn_isint(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     }
     return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_FALSE);
 }
+Focl_Object* buildIn_error(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 1)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* errorStrObj;
+    Focl_String* errorObjStr;
+    FOCL_OBJ_VEC_AT_AS_STRING(objVec, 0, errorStrObj, errorObjStr, context->strObjPool, context->strPool);
+    return FoclObjectError(context->strObjPool, context->strPool, FoclStrCStr(errorObjStr));
+}
 
 void Focl_RegisterUtilsCommand(Focl_Context* context)
 {
@@ -1273,6 +1285,7 @@ void Focl_RegisterUtilsCommand(Focl_Context* context)
     FoclRegisterCommand(context, "lindex", buildIn_lindex);
     FoclRegisterCommand(context, "lappend", buildIn_lappend);
     FoclRegisterCommand(context, "isint", buildIn_isint);
+    FoclRegisterCommand(context, "error", buildIn_error);
 #ifdef MEMORY_ALLOC_CHECK
     FoclRegisterCommand(context, "mcheck", buildIn_mcheck);
 #endif

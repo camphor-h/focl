@@ -844,3 +844,19 @@ void Focl_GetCurrentExecFilePath(char* buffer, size_t size)
         *(lastSep + 1) = '\0';
     }
 }
+
+void Focl_sleepms(unsigned int ms)
+{
+#ifdef _WIN32
+    Sleep(ms);
+#else
+    struct timespec req = {0};
+    struct timespec rem = {0};
+    req.tv_sec = ms / 1000;
+    req.tv_nsec = (ms % 1000) * 1000000;
+    while (nanosleep(&req, &rem) == -1)
+    {
+        req = rem;
+    }
+#endif
+}

@@ -444,7 +444,23 @@ Focl_Object* sys_edit(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
     FoclStringPoolFree(editorName, context->strPool);
     return FoclObjectVoid(context->strObjPool, context->strPool);
 }
-
+Focl_Object* sys_sleepms(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 1)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* msObj;
+    FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 0, msObj, context->strObjPool, context->strPool);
+    Focl_Obj_Int ms = FoclObjectUnboxInt(msObj);
+    if (ms < 0)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, "Sleep time should not be negative.");
+    }
+    Focl_sleepms(ms);
+    return FoclObjectVoid(context->strObjPool, context->strPool);
+}
 
 void Focl_RegisterSystemCommand(Focl_Context* context)
 {
@@ -456,4 +472,5 @@ void Focl_RegisterSystemCommand(Focl_Context* context)
     FoclRegisterCommand(context, "sys::mv", sys_mv);
     FoclRegisterCommand(context, "sys::cat", sys_cat);
     FoclRegisterCommand(context, "sys::edit", sys_edit);
+    FoclRegisterCommand(context, "sys::sleepms", sys_sleepms);
 }

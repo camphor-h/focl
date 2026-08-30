@@ -3942,6 +3942,10 @@ int focl_countBraceDepth(const char* str)
     }
     return depth;
 }
+#define RED_CTLPMT "\033[1;31m"
+#define CLEAR_CTLPMT "\033[0m"
+#define YELLOW_CTLPMT "\033[93m"
+
 int Focl_ExecFile(Focl_Context* ctx, const char* filename)
 {
     FILE* fp = fopen(filename, "r");
@@ -3980,7 +3984,8 @@ int Focl_ExecFile(Focl_Context* ctx, const char* filename)
         Focl_Object* result = Focl_parseLine(ctx, &buffer);
         if (result->type == FOCL_OBJ_TYPE_ERROR)
         {
-            FoclIOBufferPrintf(ctx->outBuffer, "Error: %s\n", FoclStrCStr(result->as.data));
+            FoclIOBufferPrintf(ctx->outBuffer, RED_CTLPMT"Error:"CLEAR_CTLPMT" %s\n", FoclStrCStr(result->as.data));
+            FoclIOBufferPrintf(ctx->outBuffer, YELLOW_CTLPMT"Line:"CLEAR_CTLPMT" %s\n", FoclStrCStr(&buffer));
             FoclObjectRelease(result, ctx);
             break;
         }
@@ -3996,7 +4001,8 @@ int Focl_ExecFile(Focl_Context* ctx, const char* filename)
         Focl_Object* result = Focl_parseLine(ctx, &buffer);
         if (result->type == FOCL_OBJ_TYPE_ERROR)
         {
-            FoclIOBufferPrintf(ctx->outBuffer, "Error: %s\n", FoclStrCStr(result->as.data));
+            FoclIOBufferPrintf(ctx->outBuffer, RED_CTLPMT"Error:"CLEAR_CTLPMT" %s\n", FoclStrCStr(result->as.data));
+            FoclIOBufferPrintf(ctx->outBuffer, YELLOW_CTLPMT"Line:"CLEAR_CTLPMT" %s\n", FoclStrCStr(&buffer));
         }
         FoclObjectRelease(result, ctx);
     }
