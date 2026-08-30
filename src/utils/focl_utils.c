@@ -64,7 +64,7 @@ Focl_Object* buildIn_gets(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     {
         return FoclObjectError(context->strObjPool, context->strPool, "value type must be string.");
     }
-    FoclObjectGets(context->strObjPool, context->strPool, obj);
+    FoclObjectGets(context->strPool, obj);
     return FoclObjPoolAllocAssign(context, obj);
 }
 Focl_Object* buildIn_scan(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
@@ -107,6 +107,11 @@ Focl_Object* buildIn_set(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
     Focl_Object* strNameObj;
     FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, strNameObj, context->strObjPool, context->strPool);
     Focl_String* strName = FoclObjectGetString(strNameObj);
+    Focl_Object* src = FoclObjVecAt(objVec, 1);
+    if (src->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+    }
     Focl_Object* obj = Focl_FindObject(context->curEnv, context->strPool, strName);
     if (obj == FOCL_OBJECT_ERROR)
     {
@@ -125,7 +130,7 @@ Focl_Object* buildIn_set(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
 
         /* I decided to make Focl into a dynamic but strong type language! */
 
-        Focl_Object* src = FoclObjVecAt(objVec, 1);
+        
         if (obj->type != src->type)
         {
             return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);

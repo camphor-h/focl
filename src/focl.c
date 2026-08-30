@@ -2334,10 +2334,6 @@ void freeFoclEnvPool(Focl_EnvPool* envPool, Focl_Context* context)
 /* All the args will be string type */
 void Focl_ctxInitArgs(Focl_Context* ctx, int argc, char** argv)
 {
-    for (int i = 0; i < argc; i++)
-    {
-        printf("Arg%d: %s \n", i, argv[i]);
-    }
     Focl_String* argcName = FoclStringPoolAlloc(ctx->strPool);
     FoclStrAssignStr(argcName, ctx->globalEnv->envNamespace);
     FoclStrAppend(argcName, "argc");
@@ -2423,7 +2419,7 @@ void FoclContextExitFreeChildEnv(Focl_Context* context)
     context->curEnv = parentEnv;
 }
 
-/* Firstly, it will search under current namespace, then the imported. */
+/* Firstly, it will search under current namespace, then the imported. return FOCL_OBJECT_ERROR if not found */
 Focl_Object* Focl_FindObject(Focl_Environment* env, Focl_StringPool* strPool, const Focl_String* target)
 {
     Focl_Object* obj;
@@ -3760,7 +3756,7 @@ void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer, Focl_StringPool* 
 }
 
 /* the obj type must be string! */
-void FoclObjectGets(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Object* obj)
+void FoclObjectGets(Focl_StringPool* strPool, Focl_Object* obj)
 {
     Focl_String* input = FoclStringPoolAlloc(strPool);
     Focl_getline(stdin, &(input->data), &(input->length), &(input->capacity));
