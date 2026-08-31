@@ -36,6 +36,10 @@
 
 #ifdef __linux__
 #include <sys/sendfile.h>
+#ifndef __GLIBC__
+    #define copy_file_range(fd_in, off_in, fd_out, off_out, len, flags) \
+        syscall(__NR_copy_file_range, fd_in, off_in, fd_out, off_out, len, flags)
+#endif
 #endif
 
 #endif
