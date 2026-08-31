@@ -23,8 +23,8 @@ int Focl_REPL(Focl_Context* ctx)
         return ctx->exitCode;
     }
 
-    char* input = NULL;
 #ifdef _WIN32
+    char* input = NULL;
     size_t capacity = 0;
 #endif
 

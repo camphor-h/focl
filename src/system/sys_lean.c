@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <sys/types.h>
+#include <time.h>
 #include <sys/time.h>
 #include <fcntl.h>
 #include <pwd.h>
