@@ -11,8 +11,6 @@
 #include <windows.h>
 #include <io.h>
 #include <shlobj.h>
-#elifdef __linux__
-#include <sys/sendfile.h>
 #else
 #include <unistd.h>
 #include <sys/stat.h>
@@ -22,7 +20,7 @@
 #include <fcntl.h>
 #include <pwd.h>
 #include <libgen.h>
-    #include <sys/wait.h>
+#include <sys/wait.h>
 
 #ifdef __linux__
     #include <linux/fs.h>
@@ -33,6 +31,10 @@
     
 #ifdef __APPLE__
     #include <copyfile.h>
+#endif
+
+#ifdef __linux__
+#include <sys/sendfile.h>
 #endif
 
 #endif
