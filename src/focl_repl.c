@@ -13,13 +13,12 @@
 int Focl_REPL(Focl_Context* ctx)
 {
     Focl_String* prompt = FoclStringPoolAlloc(ctx->strPool);
-    Focl_String buffer;
-    FoclStringOpCt(&buffer, FOCL_STRING_INIT_CAPACITY);
+    Focl_String* buffer = FoclStringPoolAlloc(ctx->strPool);
     int depth = 0;
     ctx->hasExitBuf = true;
     if (setjmp(ctx->exitBuf) != 0)
     {
-        FoclStringOpDt(&buffer);
+        FoclStringPoolFree(buffer, ctx->strPool);
         ctx->hasExitBuf = false;
         return ctx->exitCode;
     }
@@ -67,11 +66,11 @@ int Focl_REPL(Focl_Context* ctx)
         #endif
             continue;
         }
-        if (buffer.length > 0)
+        if (buffer->length > 0)
         {
-            FoclStrAppend(&buffer, "\n");
+            FoclStrAppend(buffer, "\n");
         }
-        FoclStrAppend(&buffer, input);
+        FoclStrAppend(buffer, input);
         depth += focl_countBraceDepth(input);
         if (depth < 0)
         {
@@ -86,12 +85,12 @@ int Focl_REPL(Focl_Context* ctx)
         {
             continue;
         }
-        Focl_Object* result = Focl_parseLine(ctx, &buffer);
+        Focl_Object* result = Focl_parseLine(ctx, buffer);
 
         if (result->type == FOCL_OBJ_TYPE_ERROR)
         {
             FoclIOBufferPrintf(ctx->outBuffer, RED_CTLPMT"Error:"CLEAR_CTLPMT" %s\n", FoclStrCStr(result->as.data));
-            FoclIOBufferPrintf(ctx->outBuffer, YELLOW_CTLPMT"Line:"CLEAR_CTLPMT" %s\n", FoclStrCStr(&buffer));
+            FoclIOBufferPrintf(ctx->outBuffer, YELLOW_CTLPMT"Line:"CLEAR_CTLPMT" %s\n", FoclStrCStr(buffer));
         }
         else if (result->type != FOCL_OBJ_TYPE_VOID)
         {
@@ -100,7 +99,7 @@ int Focl_REPL(Focl_Context* ctx)
         }
 
         FoclObjectRelease(result, ctx);
-        FoclStrClear(&buffer);
+        FoclStrClear(buffer);
         depth = 0;
     }
 #ifdef _WIN32
@@ -108,7 +107,6 @@ int Focl_REPL(Focl_Context* ctx)
 #endif
 
     ctx->hasExitBuf = false;
-    FoclStringOpDt(&buffer);
     FoclStringPoolFree(prompt, ctx->strPool);
     return ctx->exitCode;
 }

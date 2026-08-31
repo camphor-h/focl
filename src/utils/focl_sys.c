@@ -3,11 +3,11 @@
 #include "focl_dev.h"
 #include "sys_lean.h"
 
-#define FOCL_SYSERR_CANNOT_FIND_FILE "cannot find file."
-#define FOCL_SYSERR_CANNOT_ACCESS_FILE "cannot access file."
-#define FOCL_SYSERR_IS_A_DIR "cannot execute the control to a directory without \"-r\"."
+#define FOCL_SYSERR_CANNOT_FIND_FILE "Cannot find file."
+#define FOCL_SYSERR_CANNOT_ACCESS_FILE "Cannot access file."
+#define FOCL_SYSERR_IS_A_DIR "Cannot execute the control to a directory without \"-r\"."
 #define FOCL_SYSERR_NOT_A_DIR "not a valid directory."
-#define FOCL_SYSERR_UNKNOWN_CTLPMT "unknown control prompt."
+#define FOCL_SYSERR_UNKNOWN_CTLPMT "Unknown control prompt."
 
 #define FOCL_SYS_CAT_BUFFER_SIZE 1024
 

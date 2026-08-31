@@ -409,6 +409,10 @@ Focl_Object* FoclObjectVoid(Focl_StrObjPool* strObjPool, Focl_StringPool* strPoo
 Focl_Object* FoclObjectBool(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Bool booleanValue);
 void FoclObjectRetain(Focl_Object* obj);
 void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);
+
+Focl_String* FoclObjectStringize(Focl_Object* obj, Focl_StringPool* strPool); /* free the return string! */
+Focl_String* FoclCmpdObjStringize(Focl_Object* cmpdObj, Focl_StringPool* strPool); /* free the return string! */
+
 Focl_Object* Focl_FindObject(Focl_Environment* env, Focl_StringPool* strPool, const Focl_String* target);
 Focl_Object* FoclObjVecAt(Focl_Vector* objVec, size_t idx);
 char* FoclStrCStr(const Focl_String* str);
@@ -428,6 +432,8 @@ void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_Comman
 int focl_countBraceDepth(const char* str);
 
 void Focl_getline(FILE* fp, char** linePtr, size_t* len, size_t* capacity);
+
+Focl_Object* Focl_evalFile(Focl_Context* ctx, const char* filename);
 
 #define FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, dsttype, strObjPool, strPool) \
     obj = FoclObjVecAt(objVec, idx); \

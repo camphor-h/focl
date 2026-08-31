@@ -8,6 +8,8 @@
 
 /* The basic command pack of focl. */
 
+bool Focl_isFileExist(const char* filename);
+
 Focl_Object* buildIn_puts(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
@@ -1246,6 +1248,18 @@ Focl_Object* buildIn_error(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     FOCL_OBJ_VEC_AT_AS_STRING(objVec, 0, errorStrObj, errorObjStr, context->strObjPool, context->strPool);
     return FoclObjectError(context->strObjPool, context->strPool, FoclStrCStr(errorObjStr));
 }
+Focl_Object* buildIn_source(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 1)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* pathObj;
+    Focl_String* pathStr;
+    FOCL_OBJ_VEC_AT_AS_STRING(objVec, 0, pathObj, pathStr, context->strObjPool, context->strPool);
+    return Focl_evalFile(context, FoclStrCStr(pathStr));
+}
 
 void Focl_RegisterUtilsCommand(Focl_Context* context)
 {
@@ -1286,6 +1300,7 @@ void Focl_RegisterUtilsCommand(Focl_Context* context)
     FoclRegisterCommand(context, "lappend", buildIn_lappend);
     FoclRegisterCommand(context, "isint", buildIn_isint);
     FoclRegisterCommand(context, "error", buildIn_error);
+    FoclRegisterCommand(context, "source", buildIn_source);
 #ifdef MEMORY_ALLOC_CHECK
     FoclRegisterCommand(context, "mcheck", buildIn_mcheck);
 #endif
