@@ -2,7 +2,7 @@ CC = cc
 CFLAGS = -Wall -Wextra -std=gnu99
 LDFLAGS = -lm
 INCLUDES = -I./include
-PACK_CMD = -DFOCL_REGISTER_UTILS -DFOCL_REGISTER_MATH -DFOCL_REGISTER_SYS -DFOCL_REGISTER_TERM
+PACK_CMD = -DFOCL_REGISTER_UTILS -DFOCL_REGISTER_FILE -DFOCL_REGISTER_MATH -DFOCL_REGISTER_SYS -DFOCL_REGISTER_TERM
 TARGET = focl
 TARGET_C = foclc
 LIBRARY = libfocl.a
@@ -18,7 +18,8 @@ SRC_COMMON = src/focl.c \
              src/utils/focl_math.c \
              src/utils/focl_sys.c \
              src/utils/focl_utils.c \
-			 src/utils/focl_term.c
+			 src/utils/focl_file.c \
+			 src/utils/focl_term.c \
 
 SRC_FOCL = src/focl_main.c
 SRC_FOCLC = src/foclc_main.c

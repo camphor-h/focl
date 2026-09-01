@@ -191,7 +191,7 @@ typedef struct Focl_VectorPool
 #define FOCL_OBJ_POOL_WITH_NO_STR_DEFAULT_TYPE FOCL_OBJ_TYPE_INT
 #define FOCL_OBJ_POOL_WITH_STR_DEFAULT_TYPE FOCL_OBJ_TYPE_STR
 
-typedef Focl_Pool Focl_ObjWithNoStrPool;
+typedef Focl_Pool Focl_FlatObjPool;
 typedef Focl_Pool Focl_StrObjPool;
 typedef Focl_Pool Focl_CmpdObjPool;
 
@@ -218,6 +218,7 @@ typedef struct Focl_Object
         Focl_Vector* vec;
         Focl_Obj_Float f;
         Focl_Obj_Int i;
+        void* ptr;
     }as;
 }Focl_Object;
 
@@ -310,7 +311,7 @@ typedef struct Focl_Context
     Focl_ObjTablePool* objTablePool;
     Focl_CommandTablePool* cmdTablePool;
     Focl_Object* returnValue;
-    Focl_ObjWithNoStrPool* objWithNoStrPool;
+    Focl_FlatObjPool* flatObjPool;
     Focl_StrObjPool* strObjPool;
     Focl_CmpdObjPool* cmpdObjPool;
     Focl_EnvPool* envPool;
@@ -354,10 +355,11 @@ typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* obj
 #define FOCL_OBJ_TYPE_FLOAT 1
 #define FOCL_OBJ_TYPE_BOOL 2
 #define FOCL_OBJ_TYPE_VOID 3
-#define FOCL_OBJ_TYPE_ERROR 4
-#define FOCL_OBJ_TYPE_BYTECODE 5
-#define FOCL_OBJ_TYPE_STR 6
-#define FOCL_OBJ_TYPE_COMPOUND 7
+#define FOCL_OBJ_TYPE_FILE 4
+#define FOCL_OBJ_TYPE_ERROR 5
+#define FOCL_OBJ_TYPE_BYTECODE 6
+#define FOCL_OBJ_TYPE_STR 7
+#define FOCL_OBJ_TYPE_COMPOUND 8
 
 #define FOCL_ERR_INVALID_ARG "Invalid argument"
 #define FOCL_ERR_UNSUPPORTED_ARG_COUNT "Unsupported argument counts"
@@ -406,7 +408,7 @@ void FoclIOBufferPutChar(Focl_IOBuffer* ioBuffer, char c);
 
 Focl_Object* FoclObjectError(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, const char* errmsg);
 Focl_Object* FoclObjectVoid(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool);
-Focl_Object* FoclObjectBool(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Bool booleanValue);
+Focl_Object* FoclObjectBool(Focl_FlatObjPool* objPool, Focl_Obj_Bool booleanValue);
 void FoclObjectRetain(Focl_Object* obj);
 void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);
 
@@ -417,9 +419,11 @@ Focl_Object* Focl_FindObject(Focl_Environment* env, Focl_StringPool* strPool, co
 Focl_Object* FoclObjVecAt(Focl_Vector* objVec, size_t idx);
 char* FoclStrCStr(const Focl_String* str);
 void FoclStringPoolFreeOpDtVoid(void* str, void* strPool);
-Focl_Object* FoclObjWithNoStringPoolAlloc(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Type type_);
+Focl_Object* FoclFlatObjPoolAlloc(Focl_FlatObjPool* objPool, Focl_Obj_Type type_);
 Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Obj_Type type_);
 Focl_Object* FoclCmpdObjPoolAlloc(Focl_CmpdObjPool* cmpdObjPool, Focl_VectorPool* objVecPool);
+Focl_Object* FoclFileObjAlloc(Focl_FlatObjPool* objPool, const char* filePath, char* mode); /* will return null if cannot open file */
+void FoclFileObjFree(Focl_Object* obj, Focl_FlatObjPool* objPool);
 Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src);
 Focl_Object* FoclObjectCopy(Focl_Context* context, Focl_Object* src);
 

@@ -38,7 +38,7 @@
     #error "Unsupported word length platform. Though I want to see this program run in every platform. But now it couldn't run yours. Sorry. :("
 #endif
 
-void FoclObjWithNoStringPoolFree(Focl_Object* obj, Focl_ObjWithNoStrPool* objPool);
+void FoclFlatObjPoolFree(Focl_Object* obj, Focl_FlatObjPool* objPool);
 void FoclStringObjPoolFree(Focl_Object* obj, Focl_StrObjPool* objPool);
 void FoclCmpdObjPoolFree(Focl_Object* obj, Focl_CmpdObjPool* cmpdObjPool);
 
@@ -1701,16 +1701,16 @@ Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_Strin
 {
     Focl_Object* obj;
     Focl_StringPool* strPool = context->strPool;
-    Focl_ObjWithNoStrPool* objPool = context->objWithNoStrPool;
+    Focl_FlatObjPool* objPool = context->flatObjPool;
     Focl_StrObjPool* strObjPool = context->strObjPool;
     if (Focl_isInteger_View(strView))
     {
-        obj = FoclObjWithNoStringPoolAlloc(objPool, FOCL_OBJ_TYPE_INT);
+        obj = FoclFlatObjPoolAlloc(objPool, FOCL_OBJ_TYPE_INT);
         FoclObjectBoxInt(obj, Focl_StrToInt_View(strView));
     }
     else if (Focl_isFloat_View(strView))
     {
-        obj = FoclObjWithNoStringPoolAlloc(objPool, FOCL_OBJ_TYPE_FLOAT);
+        obj = FoclFlatObjPoolAlloc(objPool, FOCL_OBJ_TYPE_FLOAT);
         FoclObjectBoxFloat(obj, Focl_StrToFloat_View(strView));
     }
     else if (Focl_isString_View(strView))
@@ -1748,9 +1748,9 @@ Focl_Object* FoclObjectVoid(Focl_StrObjPool* strObjPool, Focl_StringPool* strPoo
 {
     return FoclStringObjPoolAlloc(strObjPool, strPool, FOCL_OBJ_TYPE_VOID);
 }
-Focl_Object* FoclObjectBool(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Bool booleanValue)
+Focl_Object* FoclObjectBool(Focl_FlatObjPool* objPool, Focl_Obj_Bool booleanValue)
 {
-    Focl_Object* obj = FoclObjWithNoStringPoolAlloc(objPool, FOCL_OBJ_TYPE_BOOL);
+    Focl_Object* obj = FoclFlatObjPoolAlloc(objPool, FOCL_OBJ_TYPE_BOOL);
     obj->as.i = booleanValue;
     return obj;
 }
@@ -1788,7 +1788,7 @@ void FoclObjectRelease(Focl_Object* obj, Focl_Context* context)
         }
         else
         {
-            FoclObjWithNoStringPoolFree(obj, context->objWithNoStrPool);
+            FoclFlatObjPoolFree(obj, context->flatObjPool);
         }
     }
 }
@@ -1951,7 +1951,7 @@ void FoclCmpdObjectOpClVoid(void* obj, void* ctx)
 
 /* OBJ POOL */
 
-Focl_ObjWithNoStrPool* createFoclObjWithNoStringPool()
+Focl_FlatObjPool* createFoclFlatObjPool()
 {
     return createFoclPool(sizeof(Focl_Object), FOCL_OBJ_POOL_ITEM_PER_BLOCK, FOCL_OBJ_POOL_BLOCK_COUNT_INIT, NULL);
 }
@@ -1966,7 +1966,7 @@ Focl_CmpdObjPool* createFoclCmpdObjPool(Focl_VectorPool* objVecPool)
     return createFoclPool(sizeof(Focl_Object), FOCL_OBJ_POOL_ITEM_PER_BLOCK, FOCL_OBJ_POOL_BLOCK_COUNT_INIT, &opCt);
 }
 
-Focl_Object* FoclObjWithNoStringPoolAlloc(Focl_ObjWithNoStrPool* objPool, Focl_Obj_Type type_)
+Focl_Object* FoclFlatObjPoolAlloc(Focl_FlatObjPool* objPool, Focl_Obj_Type type_)
 {
     Focl_TypeOpCl opCl = {.ctx = NULL, .func = FoclObjectWithNoStringOpClVoid};
     Focl_Object* obj = (Focl_Object*)FoclPoolAllocEx(objPool, NULL, &opCl);
@@ -1993,7 +1993,7 @@ Focl_Object* FoclCmpdObjPoolAlloc(Focl_CmpdObjPool* cmpdObjPool, Focl_VectorPool
 
 Focl_Object* FoclObjPoolWithNoStringAllocAssign(Focl_StrObjPool* objPool, Focl_Object* src)
 {
-    Focl_Object* obj = FoclObjWithNoStringPoolAlloc(objPool, src->type);
+    Focl_Object* obj = FoclFlatObjPoolAlloc(objPool, src->type);
     obj->as = src->as;
     return obj;
 }
@@ -2022,7 +2022,7 @@ Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src)
     }
     else
     {
-        return FoclObjPoolWithNoStringAllocAssign(context->objWithNoStrPool, src);
+        return FoclObjPoolWithNoStringAllocAssign(context->flatObjPool, src);
     }
 }
 Focl_Object* FoclObjectCopy(Focl_Context* context, Focl_Object* src)
@@ -2030,7 +2030,7 @@ Focl_Object* FoclObjectCopy(Focl_Context* context, Focl_Object* src)
     /* Just a alias */
     return FoclObjPoolAllocAssign(context, src);
 }
-void FoclObjWithNoStringPoolFree(Focl_Object* obj, Focl_ObjWithNoStrPool* objPool)
+void FoclFlatObjPoolFree(Focl_Object* obj, Focl_FlatObjPool* objPool)
 {
     FoclPoolFree(obj, objPool);
 }
@@ -2042,7 +2042,7 @@ void FoclCmpdObjPoolFree(Focl_Object* obj, Focl_CmpdObjPool* cmpdObjPool)
 {
     FoclPoolFree(obj, cmpdObjPool);
 }
-void freeFoclObjWithNoStringPool(Focl_ObjWithNoStrPool* objPool)
+void freeFoclFlatObjPool(Focl_FlatObjPool* objPool)
 {
     freeFoclPool(objPool, NULL);
 }
@@ -2055,6 +2055,23 @@ void freeFoclCmpdObjPool(Focl_CmpdObjPool* cmpdObjPool, Focl_Context* ctx)
 {
     Focl_TypeOpDt opDt = {.ctx = ctx, .func = FoclCmpdObjectOpDtVoid};
     freeFoclPool(cmpdObjPool, &opDt);
+}
+
+Focl_Object* FoclFileObjAlloc(Focl_FlatObjPool* objPool, const char* filePath, char* mode) /* will return null if cannot open file */
+{
+    FILE* fPtr = fopen(filePath, mode);
+    if (fPtr == NULL)
+    {
+        return FOCL_OBJECT_ERROR;
+    }
+    Focl_Object* obj = FoclFlatObjPoolAlloc(objPool, FOCL_OBJ_TYPE_FILE);
+    obj->as.ptr = (void*)fPtr;
+    return obj;
+}
+void FoclFileObjFree(Focl_Object* obj, Focl_FlatObjPool* objPool)
+{
+    fclose(obj->as.ptr);
+    FoclFlatObjPoolFree(obj, objPool);
 }
 
 /* OBJ POOL */
@@ -2354,7 +2371,7 @@ void Focl_ctxInitArgs(Focl_Context* ctx, int argc, char** argv)
     FoclStrAssignStr(argcName, ctx->globalEnv->envNamespace);
     FoclStrAppend(argcName, "argc");
     
-    Focl_Object* argcObj = FoclObjWithNoStringPoolAlloc(ctx->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+    Focl_Object* argcObj = FoclFlatObjPoolAlloc(ctx->flatObjPool, FOCL_OBJ_TYPE_INT);
     FoclObjectBoxInt(argcObj, (Focl_Obj_Int)argc - 1);
     
     LinkObjectWithName(ctx, argcObj, argcName);
@@ -2382,7 +2399,7 @@ Focl_Context* createFoclContext(FILE* outpotfPtr, int argc, char** argv)
     context->strVecPool = createFoclVectorPool(sizeof(Focl_String*));
     context->objTablePool = createFoclObjTablePool();
     context->cmdTablePool = createFoclCommandTablePool();
-    context->objWithNoStrPool = createFoclObjWithNoStringPool();
+    context->flatObjPool = createFoclFlatObjPool();
     context->strObjPool = createFoclStringObjPool(context->strPool);
     context->cmpdObjPool = createFoclCmpdObjPool(context->objVecPool);
     context->envPool = createFoclEnvPool(context);
@@ -2413,7 +2430,7 @@ void freeFoclContext(Focl_Context* context)
     freeFoclObjTablePool(context->objTablePool, context);
     freeFoclCmpdObjPool(context->cmpdObjPool, context);
     freeFoclStringObjPool(context->strObjPool, context->strPool);
-    freeFoclObjWithNoStringPool(context->objWithNoStrPool);
+    freeFoclFlatObjPool(context->flatObjPool);
     freeFoclCommandTablePool(context->cmdTablePool, context);
     freeFoclStringPool(context->strPool);
     freeFoclVectorPool(context->objVecPool);
@@ -2545,12 +2562,12 @@ Focl_Object* exprParseNumber(Focl_ExprParser* p)
     Focl_Object* obj;
     if (hasDot)
     {
-        obj = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+        obj = FoclFlatObjPoolAlloc(p->context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
         obj->as.f = Focl_StrToFloat(start);
     }
     else
     {
-        obj = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+        obj = FoclFlatObjPoolAlloc(p->context->flatObjPool, FOCL_OBJ_TYPE_INT);
         obj->as.i = Focl_StrToInt(start);
     }
 
@@ -2655,12 +2672,12 @@ Focl_Object* exprParsePrimary(Focl_ExprParser* p)
         Focl_Object* result = NULL;
         if (operand->type == FOCL_OBJ_TYPE_INT)
         {
-            result = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+            result = FoclFlatObjPoolAlloc(p->context->flatObjPool, FOCL_OBJ_TYPE_INT);
             result->as.i = -FoclObjectUnboxInt(operand);
         }
         else if (operand->type == FOCL_OBJ_TYPE_FLOAT)
         {
-            result = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+            result = FoclFlatObjPoolAlloc(p->context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
             result->as.f = -FoclObjectUnboxFloat(operand);
         }
         else
@@ -2725,7 +2742,7 @@ Focl_Object* exprParseMulDiv(Focl_ExprParser* p)
             FoclObjectRelease(left, p->context);
             FoclObjectRelease(right, p->context);
 
-            left = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+            left = FoclFlatObjPoolAlloc(p->context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
             switch (op)
             {
                 case '*': left->as.f = l * r; break;
@@ -2750,7 +2767,7 @@ Focl_Object* exprParseMulDiv(Focl_ExprParser* p)
             FoclObjectRelease(left, p->context);
             FoclObjectRelease(right, p->context);
 
-            left = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+            left = FoclFlatObjPoolAlloc(p->context->flatObjPool, FOCL_OBJ_TYPE_INT);
             switch (op)
             {
                 case '*': left->as.i = l * r; break;
@@ -2818,7 +2835,7 @@ Focl_Object* exprParseAddSub(Focl_ExprParser* p)
             FoclObjectRelease(left, p->context);
             FoclObjectRelease(right, p->context);
 
-            left = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+            left = FoclFlatObjPoolAlloc(p->context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
             left->as.f = (op == '+') ? (l + r) : (l - r);
         }
         else if (left->type == FOCL_OBJ_TYPE_INT && right->type == FOCL_OBJ_TYPE_INT)
@@ -2829,7 +2846,7 @@ Focl_Object* exprParseAddSub(Focl_ExprParser* p)
             FoclObjectRelease(left, p->context);
             FoclObjectRelease(right, p->context);
 
-            left = FoclObjWithNoStringPoolAlloc(p->context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+            left = FoclFlatObjPoolAlloc(p->context->flatObjPool, FOCL_OBJ_TYPE_INT);
             left->as.i = (op == '+') ? (l + r) : (l - r);
         }
         else
@@ -2893,7 +2910,7 @@ Focl_Object* exprParseComparison(Focl_ExprParser* p)
 
             FoclObjectRelease(left, p->context);
             FoclObjectRelease(right, p->context);
-            return FoclObjectBool(p->context->objWithNoStrPool, result ? FOCL_OBJ_TRUE : FOCL_OBJ_FALSE);
+            return FoclObjectBool(p->context->flatObjPool, result ? FOCL_OBJ_TRUE : FOCL_OBJ_FALSE);
         }
     }
 
@@ -3345,7 +3362,7 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
         if (innerObj->type == FOCL_OBJ_TYPE_ERROR) return innerObj;
         Focl_Obj_Bool val = innerObj->as.i;
         FoclObjectRelease(innerObj, context);
-        return FoclObjectBool(context->objWithNoStrPool, !val);
+        return FoclObjectBool(context->flatObjPool, !val);
     }
 
     if (trimmed.strPtr[0] == '(' && trimmed.strPtr[trimmed.len - 1] == ')')
@@ -3371,13 +3388,13 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
                 if (leftObj->type == FOCL_OBJ_TYPE_ERROR) return leftObj;
                 Focl_Obj_Bool lv = leftObj->as.i;
                 FoclObjectRelease(leftObj, context);
-                if (!lv) return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_FALSE);
+                if (!lv) return FoclObjectBool(context->flatObjPool, FOCL_OBJ_FALSE);
 
                 Focl_Object* rightObj = Focl_exprBool(context, &right);
                 if (rightObj->type == FOCL_OBJ_TYPE_ERROR) return rightObj;
                 Focl_Obj_Bool rv = rightObj->as.i;
                 FoclObjectRelease(rightObj, context);
-                return FoclObjectBool(context->objWithNoStrPool, rv);
+                return FoclObjectBool(context->flatObjPool, rv);
             }
             if (c == '|' && i + 1 < trimmed.len && trimmed.strPtr[i + 1] == '|')
             {
@@ -3388,13 +3405,13 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
                 if (leftObj->type == FOCL_OBJ_TYPE_ERROR) return leftObj;
                 Focl_Obj_Bool lv = leftObj->as.i;
                 FoclObjectRelease(leftObj, context);
-                if (lv) return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_TRUE);
+                if (lv) return FoclObjectBool(context->flatObjPool, FOCL_OBJ_TRUE);
 
                 Focl_Object* rightObj = Focl_exprBool(context, &right);
                 if (rightObj->type == FOCL_OBJ_TYPE_ERROR) return rightObj;
                 Focl_Obj_Bool rv = rightObj->as.i;
                 FoclObjectRelease(rightObj, context);
-                return FoclObjectBool(context->objWithNoStrPool, rv);
+                return FoclObjectBool(context->flatObjPool, rv);
             }
         }
     }
@@ -3454,7 +3471,7 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
                     }
                     FoclObjectRelease(leftObj, context);
                     FoclObjectRelease(rightObj, context);
-                    return FoclObjectBool(context->objWithNoStrPool, result);
+                    return FoclObjectBool(context->flatObjPool, result);
                 }
                 if (leftObj->type == FOCL_OBJ_TYPE_FLOAT || rightObj->type == FOCL_OBJ_TYPE_FLOAT)
                 {
@@ -3472,7 +3489,7 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
                     }
                     FoclObjectRelease(leftObj, context);
                     FoclObjectRelease(rightObj, context);
-                    return FoclObjectBool(context->objWithNoStrPool, result);
+                    return FoclObjectBool(context->flatObjPool, result);
                 }
 
                 Focl_Obj_Int l = leftObj->as.i;
@@ -3490,18 +3507,18 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
 
                 FoclObjectRelease(leftObj, context);
                 FoclObjectRelease(rightObj, context);
-                return FoclObjectBool(context->objWithNoStrPool, result);
+                return FoclObjectBool(context->flatObjPool, result);
             }
         }
     }
 
     if (trimmed.len == 4 && memcmp(trimmed.strPtr, "true", 4) == 0)
     {
-        return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_TRUE);
+        return FoclObjectBool(context->flatObjPool, FOCL_OBJ_TRUE);
     }
     if (trimmed.len == 5 && memcmp(trimmed.strPtr, "false", 5) == 0)
     {
-        return FoclObjectBool(context->objWithNoStrPool, FOCL_OBJ_FALSE);
+        return FoclObjectBool(context->flatObjPool, FOCL_OBJ_FALSE);
     }
 
     Focl_Object* obj = getFoclObjectWithStringView(context, &trimmed);
@@ -3519,7 +3536,7 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
 
     Focl_Obj_Bool result = obj->as.i;
     FoclObjectRelease(obj, context);
-    return FoclObjectBool(context->objWithNoStrPool, result);
+    return FoclObjectBool(context->flatObjPool, result);
 }
 
 /* EXPRESSION */

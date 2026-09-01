@@ -54,7 +54,7 @@ Focl_Object* term_getw(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    Focl_Object* wObj = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+    Focl_Object* wObj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
 #ifdef _WIN32
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
@@ -85,7 +85,7 @@ Focl_Object* term_geth(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    Focl_Object* hObj = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+    Focl_Object* hObj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
 #ifdef _WIN32
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
@@ -289,7 +289,7 @@ Focl_Object* term_stringwidth(Focl_Context* context, Focl_Vector* objVec, Focl_C
     Focl_Object* stringObj;
     Focl_String* string;
     FOCL_OBJ_VEC_AT_AS_STRING(objVec, 0, stringObj, string, context->strObjPool, context->strPool);
-    Focl_Object* widthObj = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+    Focl_Object* widthObj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
     FoclObjectBoxInt(widthObj, getUtf8StringDisplayWidth(FoclStrCStr(string)));
     return widthObj;
 }

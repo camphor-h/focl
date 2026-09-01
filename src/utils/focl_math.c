@@ -11,12 +11,12 @@
     obj = FoclObjVecAt(objVec, idx); \
     if (obj->type == FOCL_OBJ_TYPE_INT) \
     { \
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT); \
+        retValue = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT); \
         FoclObjectBoxFloat(retValue, mathfunc((Focl_Obj_Float)FoclObjectUnboxInt(obj))); \
     } \
     else if (obj->type == FOCL_OBJ_TYPE_FLOAT) \
     { \
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT); \
+        retValue = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT); \
         FoclObjectBoxFloat(retValue, mathfunc(FoclObjectUnboxFloat(obj))); \
     } \
     else \
@@ -114,12 +114,12 @@ Focl_Object* math_sin(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
     Focl_Object* retValue;
     if (objNum->type == FOCL_OBJ_TYPE_INT)
     {
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+        retValue = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
         FoclObjectBoxFloat(retValue, Focl_Math_Sin((Focl_Obj_Float)FoclObjectUnboxInt(objNum)));
     }
     else if (objNum->type == FOCL_OBJ_TYPE_FLOAT)
     {
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+        retValue = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
         FoclObjectBoxFloat(retValue, Focl_Math_Sin(FoclObjectUnboxFloat(objNum)));
     }
     else
@@ -139,12 +139,12 @@ Focl_Object* math_cos(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
     Focl_Object* retValue;
     if (objNum->type == FOCL_OBJ_TYPE_INT)
     {
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+        retValue = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
         FoclObjectBoxFloat(retValue, Focl_Math_Cos((Focl_Obj_Float)FoclObjectUnboxInt(objNum)));
     }
     else if (objNum->type == FOCL_OBJ_TYPE_FLOAT)
     {
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+        retValue = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
         FoclObjectBoxFloat(retValue, Focl_Math_Cos(FoclObjectUnboxFloat(objNum)));
     }
     else
@@ -164,12 +164,12 @@ Focl_Object* math_tan(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
     Focl_Object* retValue;
     if (objNum->type == FOCL_OBJ_TYPE_INT)
     {
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+        retValue = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
         FoclObjectBoxFloat(retValue, Focl_Math_Tan((Focl_Obj_Float)FoclObjectUnboxInt(objNum)));
     }
     else if (objNum->type == FOCL_OBJ_TYPE_FLOAT)
     {
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+        retValue = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
         FoclObjectBoxFloat(retValue, Focl_Math_Tan(FoclObjectUnboxFloat(objNum)));
     }
     else
@@ -189,12 +189,12 @@ Focl_Object* math_degtorad(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     Focl_Object* retValue;
     if (objNum->type == FOCL_OBJ_TYPE_INT)
     {
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+        retValue = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
         FoclObjectBoxFloat(retValue, Focl_Math_DegreeToRadians((Focl_Obj_Float)FoclObjectUnboxInt(objNum)));
     }
     else if (objNum->type == FOCL_OBJ_TYPE_FLOAT)
     {
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+        retValue = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
         FoclObjectBoxFloat(retValue, Focl_Math_DegreeToRadians(FoclObjectUnboxFloat(objNum)));
     }
     else
@@ -214,12 +214,12 @@ Focl_Object* math_radtodeg(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     Focl_Object* retValue;
     if (objNum->type == FOCL_OBJ_TYPE_INT)
     {
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+        retValue = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
         FoclObjectBoxFloat(retValue, Focl_Math_RadiansToDegree((Focl_Obj_Float)FoclObjectUnboxInt(objNum)));
     }
     else if (objNum->type == FOCL_OBJ_TYPE_FLOAT)
     {
-        retValue = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+        retValue = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
         FoclObjectBoxFloat(retValue, Focl_Math_RadiansToDegree(FoclObjectUnboxFloat(objNum)));
     }
     else
@@ -237,7 +237,7 @@ Focl_Object* math_inttofloat(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     }
     Focl_Object* objNum;
     FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 0, objNum, context->strObjPool, context->strPool);
-    Focl_Object* fNum = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_FLOAT);
+    Focl_Object* fNum = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
     FoclObjectBoxFloat(fNum, (Focl_Obj_Float)FoclObjectUnboxInt(objNum));
     return fNum;
 }
@@ -250,7 +250,7 @@ Focl_Object* math_floattoint(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     }
     Focl_Object* objNum;
     FOCL_OBJ_VEC_AT_AS_FLOAT_OBJ(objVec, 0, objNum, context->strObjPool, context->strPool);
-    Focl_Object* iNum = FoclObjWithNoStringPoolAlloc(context->objWithNoStrPool, FOCL_OBJ_TYPE_INT);
+    Focl_Object* iNum = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
     FoclObjectBoxInt(iNum, (Focl_Obj_Int)FoclObjectUnboxFloat(objNum));
     return iNum;
 }
