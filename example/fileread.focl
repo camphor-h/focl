@@ -1,0 +1,2 @@
+set f [open "example/10000times.focl" "r"]
+puts [gets $f]

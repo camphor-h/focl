@@ -1,0 +1,220 @@
+term::color clear
+
+set termW [term::getw]
+set termH [term::geth]
+
+proc putsMid {y str} {
+    global termW
+    set termWmid [expr "$termW / 2"]
+    set strlength [term::stringwidth $str]
+    set putsStartPos [expr "$termWmid - ($strlength / 2)"]
+    term::gotoxy $putsStartPos $y
+    puts -nonewline $str
+}
+
+proc flashCursor {waitms sumtime} {
+    while {$sumtime > 0} {
+        term::showcursor
+        sys::sleepms $waitms
+        term::hidecursor
+        sys::sleepms $waitms
+        set sumtime [expr "$sumtime - $waitms * 2"]
+    }
+}
+
+proc putsType {ms str} {
+    set len [string length $str]
+    for {set i 0} {$i < $len} {incr i} {
+        puts -nonewline [string index $str $i]
+        sys::sleepms $ms
+    }
+}
+
+proc outPutLine {y char} {
+    global termW
+    term::gotoxy 0 $y
+    for {set i 0} {$i < $termW} {incr i} {
+        puts -nonewline $char
+    }
+}
+
+proc floodScreen {ms char} {
+    global termH
+    for {set curY 0} {$curY < $termH} {incr curY} {
+        if {$curY != 0} {
+            outPutLine [expr "$curY - 1"] $char
+        }
+        term::color lightred
+        outPutLine $curY $char
+        term::color clear
+        sys::sleepms $ms
+    }
+    outPutLine $curY $char
+}
+
+proc title {} {
+    term::color lightgreen
+
+    putsMid 3 "_|_|_|_|                    _|  "
+    putsMid 4 "_|        _|_|      _|_|_|  _|  "
+    putsMid 5 "_|_|_|  _|    _|  _|        _|  "
+    putsMid 6 "_|      _|    _|  _|        _|  "
+    putsMid 7 "_|        _|_|      _|_|_|  _|  "
+
+    putsMid 10 "Fast Optimized Command Language"
+
+    term::color clear
+}
+
+term::clear
+term::hidecursor
+
+putsMid 0 "Well, here we got another script language..."
+sys::sleepms 2000
+putsMid 2 "It's name called...Focl..."
+sys::sleepms 2000
+putsMid 4 "What's this?"
+sys::sleepms 3000
+
+term::clear
+
+sys::sleepms 1000
+
+puts -nonewline "> "
+
+sys::sleepms 1500
+
+term::showcursor
+putsType 100 "What's this?"
+sys::sleepms 800
+puts ""
+term::color lightred
+puts -nonewline "Error:"
+term::color clear
+puts " Unknown Command"
+puts -nonewline "> "
+sys::sleepms 2000
+putsType 120 "Well...That's interesting..."
+sys::sleepms 2000
+
+term::hidecursor
+floodScreen 70 "@"
+sys::sleepms 1000
+floodScreen 70 " "
+
+title
+
+sys::sleepms 3000
+
+term::clear
+
+term::color lightgreen
+
+putsMid [expr "$termH / 2"] "Focl"
+term::color clear
+sys::sleepms 1000
+putsMid [expr "($termH / 2) + 1"] " -- A dialect of "
+sys::sleepms 1000
+term::color reverse
+putsMid [expr "($termH / 2) + 2"] Tcl
+sys::sleepms 1500
+term::color clear
+putsMid [expr "($termH / 2) + 4"] "with strong-type and more interesting things."
+sys::sleepms 3000
+
+term::clear
+term::color lightblue
+putsMid [expr "$termH - 1"] "It has a strong type system."
+term::showcursor
+term::color clear
+term::gotoxy 0 0
+puts -nonewline "> "
+sys::sleepms 500
+putsType 70 "set a 100"
+sys::sleepms 700
+term::gotoxy 0 1
+puts 100
+term::gotoxy 0 2
+puts -nonewline "> "
+sys::sleepms 1000
+term::hidecursor
+outPutLine [expr "$termH - 1"] " "
+term::color lightblue
+putsMid [expr "$termH - 1"] "For example, you can't assign a object with a different type."
+term::color clear
+term::showcursor
+term::gotoxy [term::stringwidth "> "] 2
+sys::sleepms 1500
+putsType 70 "set a \"this is a string\""
+sys::sleepms 500
+term::gotoxy 0 3
+term::color lightred
+puts -nonewline "Error:"
+term::color clear
+puts -nonewline " Wrong type in assignment"
+term::gotoxy 0 4
+puts -nonewline "> "
+sys::sleepms 1000
+term::hidecursor
+outPutLine [expr "$termH - 1"] " "
+term::color lightblue
+putsMid [expr "$termH - 1"] "It also has many useful built-in commands."
+term::color clear
+term::showcursor
+term::gotoxy [term::stringwidth "> "] 4
+putsType 50 "expr \"(45.0 * 221.0) / 2.0\""
+sys::sleepms 100
+term::gotoxy 0 5
+puts [expr "(45.0 * 221.0) / 2.0"]
+term::gotoxy 0 6
+puts -nonewline "> "
+sys::sleepms 1000
+putsType 85 "term::clear"
+sys::sleepms 3000
+term::clear
+
+sys::sleepms 2000
+term::color lightblack
+term::hidecursor
+putsMid 2 "Also, with the foclc (focl compiler)"
+sys::sleepms 1000
+putsMid 3 "you could pack scripts as a executable file."
+sys::sleepms 1000
+putsMid 4 "like this..."
+sys::sleepms 100
+term::color clear
+term::gotoxy 0 8
+term::showcursor
+putsType 85 "> foclc foclshow.focl"
+sys::sleepms 700
+term::hidecursor
+term::color lightblack
+putsMid 6 "Yet you still need a C compiler"
+term::showcursor
+term::color clear
+term::gotoxy 0 9
+puts "Compiling..."
+term::gotoxy 0 10
+puts "Command: cc -x c -O2 -flto -s \".\foclshow.tmp\" -o \"foclshow\" -x none \"libfocl.a\""
+sys::sleepms 3000
+term::hidecursor
+term::color lightblack
+putsMid 7 "Of course, it just a show, no anything was created on your computer."
+term::showcursor
+term::color clear
+term::gotoxy 0 11
+puts "Compilation successful! Output: foclshow"
+puts -nonewline "> "
+sys::sleepms 3000
+
+term::clear
+putsMid [expr "($termH / 2) - 2"] "Join Us!"
+sys::sleepms 3000
+term::color blue
+putsMid [expr "$termH / 2"] "Github: https://github.com/camphor-h/focl"
+sys::sleepms 7000
+
+term::showcursor
+
+term::color clear
+term::clear

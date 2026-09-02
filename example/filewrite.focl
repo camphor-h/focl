@@ -1,0 +1,3 @@
+set f [open "fileTest.txt" "w"]
+puts $f "Write!"
+close $f
