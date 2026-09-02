@@ -1,5 +1,12 @@
 #include "focl_dev.h"
 #include "sys_lean.h"
+#include <string.h>
+
+#define FOCL_ERR_CANNOT_FIND_FILE "Cannot find file."
+#define FOCL_ERR_CANNOT_ACCESS_FILE "Cannot access file."
+#define FOCL_ERR_IS_A_DIR "Cannot execute the control to a directory without \"-r\"."
+#define FOCL_ERR_NOT_A_DIR "not a valid directory."
+#define FOCL_ERR_UNKNOWN_CTLPMT "Unknown control prompt."
 
 Focl_Object* file_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -38,7 +45,7 @@ Focl_Object* file_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
 
         if (!Focl_isFileExist(FoclStrCStr(FoclObjectGetString(targetObj))))
         {
-            return FoclObjectError(context->strObjPool, context->strPool, "file doesn't exist");
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_FILE);
         }
         if (Focl_isNormalFile(FoclStrCStr(FoclObjectGetString(targetObj))))
         {
@@ -58,7 +65,7 @@ Focl_Object* file_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
 
         if (!Focl_isFileExist(FoclStrCStr(FoclObjectGetString(targetObj))))
         {
-            return FoclObjectError(context->strObjPool, context->strPool, "file doesn't exist");
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_FILE);
         }
         if (Focl_isDir(FoclStrCStr(FoclObjectGetString(targetObj))))
         {
@@ -78,7 +85,7 @@ Focl_Object* file_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
 
         if (!Focl_isFileExist(FoclStrCStr(FoclObjectGetString(targetObj))))
         {
-            return FoclObjectError(context->strObjPool, context->strPool, "file doesn't exist");
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_FILE);
         }
         if (Focl_isNormalFile(FoclStrCStr(FoclObjectGetString(targetObj))))
         {
@@ -98,7 +105,7 @@ Focl_Object* file_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
         {
             return FoclObjectError(context->strObjPool, context->strPool, "Cannot mkdir");
         }
-        retValue = FoclObjectVoid(context->strObjPool, context->strPool);
+        retValue = FoclObjectVoid(context->flatObjPool);
     }
     else if (FoclStrComp(FoclObjectGetString(childCmdObj), "dirname") == 0)
     {
@@ -125,7 +132,7 @@ Focl_Object* file_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
 
         if (Focl_isFileExist(FoclStrCStr(FoclObjectGetString(targetObj))))
         {
-            return FoclObjectError(context->strObjPool, context->strPool, "file or path doesn't exist");
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_FILE);
         }
         char buffer[PATH_MAX];
         Focl_realpath(FoclStrCStr(FoclObjectGetString(targetObj)), buffer, PATH_MAX);
@@ -138,8 +145,51 @@ Focl_Object* file_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
     }
     return retValue;
 }
+Focl_Object* file_open(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 2)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* originalPathObj;
+    Focl_String* originalPath;
+    FOCL_OBJ_VEC_AT_AS_STRING(objVec, 0, originalPathObj, originalPath, context->strObjPool, context->strPool);
+    Focl_String* realPath = FoclStringPoolAlloc(context->strPool);
+    FoclStrReserve(realPath, PATH_MAX + 1);
+    Focl_realpath(FoclStrCStr(originalPath), FoclStrCStr(realPath), PATH_MAX + 1);
+    realPath->length = strlen(realPath->data);
+
+    Focl_Object* modeObj;
+    Focl_String* mode;
+    FOCL_OBJ_VEC_AT_AS_STRING(objVec, 1, modeObj, mode, context->strObjPool, context->strPool);
+    Focl_Object* fObj = FoclFileObjAlloc(context->flatObjPool, FoclStrCStr(realPath), FoclStrCStr(mode));
+    if (fObj == FOCL_OBJECT_ERROR)
+    {
+        FoclStringPoolFree(realPath, context->strPool);
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_FILE);
+    }
+
+    FoclStringPoolFree(realPath, context->strPool);
+
+    return fObj;
+}
+Focl_Object* file_close(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 1)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* fObj;
+    FOCL_OBJ_VEC_AT_AS_OBJ(objVec, 0, fObj, FOCL_OBJ_TYPE_FILE, context->strObjPool, context->strPool);
+    FoclObjectRelease(fObj, context);
+    return FoclObjectVoid(context->flatObjPool);
+}
 
 void Focl_RegisterFileCommand(Focl_Context* context)
 {
     FoclRegisterCommand(context, "file", file_file);
+    FoclRegisterCommand(context, "open", file_open);
+    FoclRegisterCommand(context, "close", file_close);
 }

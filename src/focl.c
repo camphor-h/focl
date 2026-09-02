@@ -80,6 +80,43 @@ size_t focl_freed_ = 0;
 #endif
 #endif
 
+#if defined(__cplusplus)
+    #if __cplusplus >= 201103L
+        #define FOCL_STATIC_ASSERT(expr, msg) static_assert(expr, msg)
+    #else
+        #define FOCL_STATIC_ASSERT(expr, msg) \
+            typedef char static_assert_failed_##msg[(expr) ? 1 : -1]
+    #endif
+
+#elif defined(__STDC_VERSION__)
+
+    #if __STDC_VERSION__ >= 201112L
+        #include <assert.h>
+        #define FOCL_STATIC_ASSERT(expr, msg) static_assert(expr, msg)
+
+    #elif defined(__GNUC__) || defined(__clang__)
+
+        #define FOCL_STATIC_ASSERT(expr, msg) _Static_assert(expr, msg)
+
+    #elif defined(_MSC_VER)
+        #if _MSC_VER >= 1900
+            #include <assert.h>
+            #define FOCL_STATIC_ASSERT(expr, msg) static_assert(expr, msg)
+        #else
+            #define FOCL_STATIC_ASSERT(expr, msg) \
+                typedef char static_assert_failed_##msg[(expr) ? 1 : -1]
+        #endif
+
+    #else
+        #define FOCL_STATIC_ASSERT(expr, msg) \
+            typedef char static_assert_failed_##msg[(expr) ? 1 : -1]
+    #endif
+
+#else
+    #define FOCL_STATIC_ASSERT(expr, msg) \
+        typedef char static_assert_failed_##msg[(expr) ? 1 : -1]
+#endif
+
 void* Focl_malloc(size_t size)
 {
 #ifdef MEMORY_ALLOC_CHECK
@@ -1629,7 +1666,7 @@ void FoclObjectBoxFloat(Focl_Object* obj, Focl_Obj_Float f_)
 }
 bool isFoclObjectUseString(Focl_Object* obj)
 {
-    return (obj->type >= FOCL_OBJ_TYPE_VOID && obj->type <= FOCL_OBJ_TYPE_STR);
+    return (obj->type >= FOCL_OBJ_TYPE_ERROR && obj->type <= FOCL_OBJ_TYPE_STR);
 }
 bool isFoclObjectCompound(Focl_Object* obj)
 {
@@ -1744,9 +1781,9 @@ Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_Strin
     }
     return obj;
 }
-Focl_Object* FoclObjectVoid(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool)
+Focl_Object* FoclObjectVoid(Focl_FlatObjPool* flatObjPool)
 {
-    return FoclStringObjPoolAlloc(strObjPool, strPool, FOCL_OBJ_TYPE_VOID);
+    return FoclFlatObjPoolAlloc(flatObjPool, FOCL_OBJ_TYPE_VOID);
 }
 Focl_Object* FoclObjectBool(Focl_FlatObjPool* objPool, Focl_Obj_Bool booleanValue)
 {
@@ -1773,6 +1810,7 @@ void FoclObjectRetain(Focl_Object* obj)
         obj->refCount++;
     }
 }
+void FoclFileObjFree(Focl_Object* obj, Focl_FlatObjPool* objPool);
 void FoclObjectRelease(Focl_Object* obj, Focl_Context* context)
 {
     obj->refCount--;
@@ -1785,6 +1823,10 @@ void FoclObjectRelease(Focl_Object* obj, Focl_Context* context)
         else if (isFoclObjectCompound(obj))
         {
             FoclCmpdObjPoolFree(obj, context->cmpdObjPool);
+        }
+        else if (obj->type == FOCL_OBJ_TYPE_FILE)
+        {
+            FoclFileObjFree(obj, context->flatObjPool);
         }
         else
         {
@@ -2020,6 +2062,11 @@ Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src)
     {
         return FoclCmpdObjPoolAllocAssign(context->cmpdObjPool, context->objVecPool, src);
     }
+    else if (src->type == FOCL_OBJ_TYPE_FILE)
+    {
+        FoclObjectRetain(src);
+        return src;
+    }
     else
     {
         return FoclObjPoolWithNoStringAllocAssign(context->flatObjPool, src);
@@ -2065,12 +2112,12 @@ Focl_Object* FoclFileObjAlloc(Focl_FlatObjPool* objPool, const char* filePath, c
         return FOCL_OBJECT_ERROR;
     }
     Focl_Object* obj = FoclFlatObjPoolAlloc(objPool, FOCL_OBJ_TYPE_FILE);
-    obj->as.ptr = (void*)fPtr;
+    obj->as.ptr = createFoclIOBuffer(fPtr, FOCL_IOBUFFER_NORMAL_DEFAULT_SIZE);
     return obj;
 }
 void FoclFileObjFree(Focl_Object* obj, Focl_FlatObjPool* objPool)
 {
-    fclose(obj->as.ptr);
+    freeFoclIOBuffer(obj->as.ptr);
     FoclFlatObjPoolFree(obj, objPool);
 }
 
@@ -2403,7 +2450,7 @@ Focl_Context* createFoclContext(FILE* outpotfPtr, int argc, char** argv)
     context->strObjPool = createFoclStringObjPool(context->strPool);
     context->cmpdObjPool = createFoclCmpdObjPool(context->objVecPool);
     context->envPool = createFoclEnvPool(context);
-    context->outBuffer = createFoclIOBuffer(outpotfPtr, FOCL_IOBUFFER_DEFAULT_SIZE);
+    context->outBuffer = createFoclIOBuffer(outpotfPtr, FOCL_IOBUFFER_STDOUT_DEFAULT_SIZE);
     context->globalEnv = FoclEnvPoolAlloc(context->envPool, NULL, context, NULL);
     context->curEnv = context->globalEnv;
     context->exitCode = 0;
@@ -3595,7 +3642,7 @@ Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* str
 Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView)
 {
     Focl_StringView remaining = *strView;
-    Focl_Object* lastResult = FoclObjectVoid(context->strObjPool, context->strPool);
+    Focl_Object* lastResult = FoclObjectVoid(context->flatObjPool);
     while (1)
     {
         Focl_StringView cmdView = getNextLine(&remaining);
@@ -3638,7 +3685,12 @@ Focl_IOBuffer* createFoclIOBuffer(FILE* fptr_, int bufferSize)
 }
 void freeFoclIOBuffer(Focl_IOBuffer* ioBuffer)
 {
+    FILE* file = ioBuffer->fPtr;
     Focl_free(ioBuffer->buf);
+    if (file != stdin && file != stdout && file != stderr)
+    {
+        fclose(ioBuffer->fPtr);
+    }
     Focl_free(ioBuffer);
 }
 void FoclIOBufferFlushOut(Focl_IOBuffer* ioBuffer)
@@ -3714,6 +3766,9 @@ void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer, Focl_StringPool* 
             break;
         case FOCL_OBJ_TYPE_BOOL:
             FoclIOBufferPrintf(oBuffer, "%s", obj->as.i ? "true" : "false");
+            break;
+        case FOCL_OBJ_TYPE_FILE:
+            FoclIOBufferPrintf(oBuffer, "Ptr: %p\n", obj->as.ptr);
             break;
         case FOCL_OBJ_TYPE_STR: /* FALLTHROUGH */
         case FOCL_OBJ_TYPE_ERROR:
@@ -4083,7 +4138,7 @@ Focl_Object* Focl_evalFile(Focl_Context* ctx, const char* filename)
 
     if (lastResult == NULL)
     {
-        return FoclObjectVoid(ctx->strObjPool, ctx->strPool);
+        return FoclObjectVoid(ctx->flatObjPool);
     }
     return lastResult;
 }

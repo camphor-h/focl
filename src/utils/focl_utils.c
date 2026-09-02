@@ -21,12 +21,24 @@ Focl_Object* buildIn_puts(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     else if (argCount == 2)
     {
         Focl_Object* optionObj;
-        Focl_String* option;
-        FOCL_OBJ_VEC_AT_AS_STRING(objVec, 0, optionObj, option, context->strObjPool, context->strPool);
-        if (FoclStrComp(option, "-nonewline") == 0)
+        FOCL_OBJ_VEC_AT_NOT_ERR(objVec, 0, optionObj, context->strObjPool, context->strPool);
+        if (optionObj->type == FOCL_OBJ_TYPE_STR)
+        {
+            Focl_String* option = FoclObjectGetString(optionObj);
+            if (FoclStrComp(option, "-nonewline") == 0)
+            {
+                FoclObjectPrint(FoclObjVecAt(objVec, 1), context->outBuffer, context->strPool);
+                FoclIOBufferFlushOut(context->outBuffer);
+            }
+            else
+            {
+                return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
+            }
+        }
+        else if (optionObj->type == FOCL_OBJ_TYPE_FILE)
         {
             FoclObjectPrint(FoclObjVecAt(objVec, 1), context->outBuffer, context->strPool);
-            FoclIOBufferFlushOut(context->outBuffer);
+            FoclIOBufferPutChar(context->outBuffer, '\n');
         }
         else
         {
@@ -37,7 +49,7 @@ Focl_Object* buildIn_puts(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 Focl_Object* buildIn_gets(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -164,7 +176,7 @@ Focl_Object* buildIn_unset(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     FoclObjectRelease(obj, context);
     FoclStringPoolFree(fullNSName, context->strPool);
     
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 Focl_Object* buildIn_incr(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -245,7 +257,7 @@ Focl_Object* buildIn_if(Focl_Context* context, Focl_Vector* objVec, Focl_Command
 
         if (i + 2 >= argCount)
         {
-            return FoclObjectVoid(context->strObjPool, context->strPool);
+            return FoclObjectVoid(context->flatObjPool);
         }
 
         Focl_Object* nextObj;
@@ -301,7 +313,7 @@ Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     {
         return condResult;
     }
-    Focl_Object* result = FoclObjectVoid(context->strObjPool, context->strPool);
+    Focl_Object* result = FoclObjectVoid(context->flatObjPool);
     context->hasBreakBuf = true;
     context->hasContinueBuf = true;
 
@@ -391,7 +403,7 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
     Focl_String* bodyBlockStr;
     Focl_StringView bodyBlock;
     FOCL_OBJ_VEC_AT_AS_STRING_VIEW(objVec, 3, bodyBlockObj, bodyBlockStr, bodyBlock, context->strObjPool, context->strPool);
-    Focl_Object* result = FoclObjectVoid(context->strObjPool, context->strPool);
+    Focl_Object* result = FoclObjectVoid(context->flatObjPool);
     context->hasBreakBuf = true;
     context->hasContinueBuf = true;
     while (1)
@@ -474,6 +486,9 @@ Focl_Object* buildIn_typename(Focl_Context* context, Focl_Vector* objVec, Focl_C
             break;
         case FOCL_OBJ_TYPE_VOID:
             FoclStrAssign(retValue->as.data, "Void");
+            break;
+        case FOCL_OBJ_TYPE_FILE:
+            FoclStrAssign(retValue->as.data, "File");
             break;
         case FOCL_OBJ_TYPE_STR:
             FoclStrAssign(retValue->as.data, "String");
@@ -768,7 +783,7 @@ Focl_Object* buildIn_upvar(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     FoclStrAppendStr(fullName, localName);
     LinkObjectWithName(context, outerVar, fullName);
     FoclStringPoolFree(fullName, context->strPool);
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 Focl_Object* buildIn_global(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -780,7 +795,7 @@ Focl_Object* buildIn_global(Focl_Context* context, Focl_Vector* objVec, Focl_Com
     if (context->curEnv == context->globalEnv)
     {
         /* Do nothing */
-        return FoclObjectVoid(context->strObjPool, context->strPool);
+        return FoclObjectVoid(context->flatObjPool);
     }
     Focl_Object* nameObj;
     FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, nameObj, context->strObjPool, context->strPool);
@@ -801,7 +816,7 @@ Focl_Object* buildIn_global(Focl_Context* context, Focl_Vector* objVec, Focl_Com
     FoclStrAppendStr(fullName, name);
     LinkObjectWithName(context, globalVar, fullName);
     FoclStringPoolFree(fullName, context->strPool);
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 Focl_Object* buildIn_proc(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -831,7 +846,7 @@ Focl_Object* buildIn_proc(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     Focl_Command* _cmd = createFoclCommand(context->strPool, procName, &argList, &execBlock);
     Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
     FoclHashTableInsert(context->curEnv->cmdTable, _name, _cmd, StrKeyCompare, &keyOpDt, NULL);
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 Focl_Object* buildIn_return(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -845,7 +860,7 @@ Focl_Object* buildIn_return(Focl_Context* context, Focl_Vector* objVec, Focl_Com
     size_t argCount = FoclVectorGetSize(objVec);
     if (argCount == 0)
     {
-        retObj = FoclObjectVoid(context->strObjPool, context->strPool);
+        retObj = FoclObjectVoid(context->flatObjPool);
     }
     else if (argCount == 1)
     {
@@ -909,7 +924,7 @@ Focl_Object* buildIn_srand(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
         FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 0, seed, context->strObjPool, context->strPool);
         srand((unsigned int)FoclObjectUnboxInt(seed));
     }
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 Focl_Object* buildIn_randi(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -1121,7 +1136,7 @@ Focl_Object* buildIn_namespace(Focl_Context* context, Focl_Vector* objVec, Focl_
         FoclStrAppendStr(nsToImport, FoclObjectGetString(targetObj));
         FoclStrAppend(nsToImport, "::");
         FoclVectorPushBack(context->curEnv->namespaceVec, &nsToImport);
-        retValue = FoclObjectVoid(context->strObjPool, context->strPool);
+        retValue = FoclObjectVoid(context->flatObjPool);
     }
     else
     {
@@ -1196,7 +1211,7 @@ Focl_Object* buildIn_lappend(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     FOCL_OBJ_VEC_AT_NOT_ERR(objVec, 1, srcObj, context->strObjPool, context->strPool);
     FoclObjectRetain(srcObj);
     FoclVectorPushBack(FoclObjectGetVector(lObj), &srcObj);
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 
 #ifdef MEMORY_ALLOC_CHECK
@@ -1209,7 +1224,7 @@ Focl_Object* buildIn_mcheck(Focl_Context* context, Focl_Vector* objVec, Focl_Com
     }
     FoclIOBufferPrintf(context->outBuffer, "Malloced:%zu Bytes, Realloced:%zu Bytes, Freed:%zu Bytes\n", focl_malloced_, focl_realloced_, focl_freed_);
     FoclIOBufferPrintf(context->outBuffer, "Current heap memory: %zu\n", focl_malloced_ - focl_freed_);
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 #endif
 

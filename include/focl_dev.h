@@ -293,7 +293,9 @@ typedef struct Focl_Environment
     Focl_Vector* namespaceVec; /* imported namespace vector */
 }Focl_Environment;
 
-#define FOCL_IOBUFFER_DEFAULT_SIZE 2048
+#define FOCL_IOBUFFER_STDOUT_DEFAULT_SIZE 2048
+
+#define FOCL_IOBUFFER_NORMAL_DEFAULT_SIZE 512
 
 typedef struct Focl_IOBuffer
 {
@@ -407,7 +409,7 @@ void FoclIOBufferPrintf(Focl_IOBuffer* ioBuffer, const char* fmt, ...);
 void FoclIOBufferPutChar(Focl_IOBuffer* ioBuffer, char c);
 
 Focl_Object* FoclObjectError(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, const char* errmsg);
-Focl_Object* FoclObjectVoid(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool);
+Focl_Object* FoclObjectVoid(Focl_FlatObjPool* flatObjPool);
 Focl_Object* FoclObjectBool(Focl_FlatObjPool* objPool, Focl_Obj_Bool booleanValue);
 void FoclObjectRetain(Focl_Object* obj);
 void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);
@@ -423,7 +425,6 @@ Focl_Object* FoclFlatObjPoolAlloc(Focl_FlatObjPool* objPool, Focl_Obj_Type type_
 Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Obj_Type type_);
 Focl_Object* FoclCmpdObjPoolAlloc(Focl_CmpdObjPool* cmpdObjPool, Focl_VectorPool* objVecPool);
 Focl_Object* FoclFileObjAlloc(Focl_FlatObjPool* objPool, const char* filePath, char* mode); /* will return null if cannot open file */
-void FoclFileObjFree(Focl_Object* obj, Focl_FlatObjPool* objPool);
 Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src);
 Focl_Object* FoclObjectCopy(Focl_Context* context, Focl_Object* src);
 

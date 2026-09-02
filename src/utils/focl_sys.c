@@ -23,7 +23,7 @@ Focl_Object* sys_exec(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
     Focl_Object* sysCmdObj;
     FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, sysCmdObj, context->strObjPool, context->strPool);
     system(FoclStrCStr(FoclObjectGetString(sysCmdObj)));
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 Focl_Object* sys_name(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -76,7 +76,7 @@ Focl_Object* sys_cp(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
                 }
                 else
                 {
-                    retValue = FoclObjectVoid(context->strObjPool, context->strPool);
+                    retValue = FoclObjectVoid(context->flatObjPool);
                 }
             }
             else
@@ -106,7 +106,7 @@ Focl_Object* sys_cp(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
             {
                 FOCL_ERROBJ_ALLOC(retValue, context, "Cannnot copy file.");
             }
-            retValue = FoclObjectVoid(context->strObjPool, context->strPool);
+            retValue = FoclObjectVoid(context->flatObjPool);
             Focl_free(realSrcPath);
             Focl_free(realDstPath);
         }
@@ -140,7 +140,7 @@ Focl_Object* sys_rm(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
             }
             else
             {
-                retValue = FoclObjectVoid(context->strObjPool, context->strPool);
+                retValue = FoclObjectVoid(context->flatObjPool);
             }
         }
         else
@@ -164,7 +164,7 @@ Focl_Object* sys_rm(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
             }
             else
             {
-                retValue = FoclObjectVoid(context->strObjPool, context->strPool);
+                retValue = FoclObjectVoid(context->flatObjPool);
             }
             Focl_free(realSrcPath);
         }
@@ -214,7 +214,7 @@ Focl_Object* sys_mv(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cm
     
     if (rename(realSrcPath, realDstPath) == 0)
     {
-        retValue = FoclObjectVoid(context->strObjPool, context->strPool);
+        retValue = FoclObjectVoid(context->flatObjPool);
     }
     else
     {
@@ -305,7 +305,7 @@ Focl_Object* sys_edit(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
     char* argv[] = {FoclStrCStr(editorName), FOCL_STROBJ_CSTR(fileNameObj), NULL};
     Focl_execAndWait(FoclStrCStr(editorName), argv);
     FoclStringPoolFree(editorName, context->strPool);
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 Focl_Object* sys_sleepms(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -322,7 +322,7 @@ Focl_Object* sys_sleepms(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
         return FoclObjectError(context->strObjPool, context->strPool, "Sleep time should not be negative.");
     }
     Focl_sleepms(ms);
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 
 void Focl_RegisterSystemCommand(Focl_Context* context)

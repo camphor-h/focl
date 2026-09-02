@@ -24,7 +24,7 @@ Focl_Object* term_clear(Focl_Context* context, Focl_Vector* objVec, Focl_Command
     }
     FoclIOBufferPrintf(context->outBuffer, CLEAR_SCREEN);
     FoclIOBufferFlushOut(context->outBuffer);
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 Focl_Object* term_gotoxy(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -45,7 +45,7 @@ Focl_Object* term_gotoxy(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
     }
     FoclIOBufferPrintf(context->outBuffer, "\033[%" FOCL_FORMAT_INT ";%" FOCL_FORMAT_INT "H", row + 1, col + 1);
     FoclIOBufferFlushOut(context->outBuffer);
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 Focl_Object* term_getw(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -126,7 +126,7 @@ Focl_Object* term_hidecursor(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     FoclIOBufferPrintf(context->outBuffer, HIDE_CURSOR);
     FoclIOBufferFlushOut(context->outBuffer);
 #endif
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 Focl_Object* term_showcursor(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
@@ -145,7 +145,7 @@ Focl_Object* term_showcursor(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     FoclIOBufferPrintf(context->outBuffer, SHOW_CURSOR);
     FoclIOBufferFlushOut(context->outBuffer);
 #endif
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 
 typedef struct
@@ -209,12 +209,12 @@ Focl_Object* term_color(Focl_Context* context, Focl_Vector* objVec, Focl_Command
             {
                 FoclIOBufferPrintf(context->outBuffer, "\033[%sm", focl_termColors[i].code);
                 FoclIOBufferFlushOut(context->outBuffer);
-                return FoclObjectVoid(context->strObjPool, context->strPool);
+                return FoclObjectVoid(context->flatObjPool);
             }
         }
         return FoclObjectError(context->strObjPool, context->strPool, "unknown color");
     }
-    return FoclObjectVoid(context->strObjPool, context->strPool);
+    return FoclObjectVoid(context->flatObjPool);
 }
 
 int32_t getUtf8CodePoint(const char* bytes);
