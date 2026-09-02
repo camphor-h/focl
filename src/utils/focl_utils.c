@@ -37,13 +37,28 @@ Focl_Object* buildIn_puts(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
         }
         else if (optionObj->type == FOCL_OBJ_TYPE_FILE)
         {
-            FoclObjectPrint(FoclObjVecAt(objVec, 1), context->outBuffer, context->strPool);
-            FoclIOBufferPutChar(context->outBuffer, '\n');
+            FoclObjectPrint(FoclObjVecAt(objVec, 1), optionObj->as.ptr, context->strPool);
+            FoclIOBufferPutChar(optionObj->as.ptr, '\n');
         }
         else
         {
             return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
         }
+    }
+    else if (argCount == 3)
+    {
+        Focl_Object* optionObj = FoclObjVecAt(objVec, 0);
+        Focl_Object* fileObj = FoclObjVecAt(objVec, 1);
+        if (optionObj->type != FOCL_OBJ_TYPE_STR || FoclStrComp(FoclObjectGetString(optionObj), "-nonewline") != 0)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
+        }
+        if (fileObj->type != FOCL_OBJ_TYPE_FILE)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
+        }
+        FoclObjectPrint(FoclObjVecAt(objVec, 2), fileObj->as.ptr, context->strPool);
+        FoclIOBufferFlushOut(fileObj->as.ptr);
     }
     else
     {
@@ -54,60 +69,152 @@ Focl_Object* buildIn_puts(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
 Focl_Object* buildIn_gets(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
-    if (FoclVectorGetSize(objVec) != 2)
+    size_t argCount = FoclVectorGetSize(objVec);
+    if (argCount != 1 && argCount != 2)
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    Focl_Object* inPipeObj;
-    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, inPipeObj, context->strObjPool, context->strPool);
-    Focl_String* inPipe = FoclObjectGetString(inPipeObj);
-    if (FoclStrComp(inPipe, "stdin") != 0)
+
+    Focl_Object* inObj = FoclObjVecAt(objVec, 0);
+    FILE* fp;
+    if (inObj->type == FOCL_OBJ_TYPE_STR)
+    {
+        if (FoclStrComp(FoclObjectGetString(inObj), "stdin") != 0)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
+        }
+        fp = stdin;
+    }
+    else if (inObj->type == FOCL_OBJ_TYPE_FILE)
+    {
+        fp = ((Focl_IOBuffer*)inObj->as.ptr)->fPtr;
+    }
+    else
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
     }
+
+    Focl_String* input = FoclStringPoolAlloc(context->strPool);
+    Focl_getline(fp, &(input->data), &(input->length), &(input->capacity));
+
+    if (argCount == 1)
+    {
+        Focl_Object* retObj = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
+        FoclStrAssignStr(FoclObjectGetString(retObj), input);
+        FoclStringPoolFree(input, context->strPool);
+        return retObj;
+    }
+
     Focl_Object* varStrObj;
     FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 1, varStrObj, context->strObjPool, context->strPool);
     Focl_String* varStr = FoclObjectGetString(varStrObj);
     Focl_Object* obj = Focl_FindObject(context->curEnv, context->strPool, varStr);
     if (obj == FOCL_OBJECT_ERROR)
     {
+        FoclStringPoolFree(input, context->strPool);
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
     }
     if (obj->type != FOCL_OBJ_TYPE_STR)
     {
+        FoclStringPoolFree(input, context->strPool);
         return FoclObjectError(context->strObjPool, context->strPool, "value type must be string.");
     }
-    FoclObjectGets(context->strPool, obj);
+    FoclStrAssignStr(FoclObjectGetString(obj), input);
+    FoclStringPoolFree(input, context->strPool);
     return FoclObjPoolAllocAssign(context, obj);
 }
 Focl_Object* buildIn_scan(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
-    if (FoclVectorGetSize(objVec) != 2)
+    size_t argCount = FoclVectorGetSize(objVec);
+    if (argCount != 1 && argCount != 2)
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    Focl_Object* inPipeObj;
-    FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 0, inPipeObj, context->strObjPool, context->strPool);
-    Focl_String* inPipe = FoclObjectGetString(inPipeObj);
-    if (FoclStrComp(inPipe, "stdin") != 0)
+
+    Focl_Object* inObj = FoclObjVecAt(objVec, 0);
+    FILE* fp;
+    if (inObj->type == FOCL_OBJ_TYPE_STR)
+    {
+        if (FoclStrComp(FoclObjectGetString(inObj), "stdin") != 0)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
+        }
+        fp = stdin;
+    }
+    else if (inObj->type == FOCL_OBJ_TYPE_FILE)
+    {
+        fp = ((Focl_IOBuffer*)inObj->as.ptr)->fPtr;
+    }
+    else
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
     }
+
+    Focl_String* input = FoclStringPoolAlloc(context->strPool);
+    Focl_getline(fp, &(input->data), &(input->length), &(input->capacity));
+
+    if (argCount == 1)
+    {
+        Focl_Object* retObj;
+        if (Focl_isInteger(FoclStrCStr(input)))
+        {
+            retObj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
+            FoclObjectBoxInt(retObj, Focl_StrToInt(FoclStrCStr(input)));
+        }
+        else if (Focl_isFloat(FoclStrCStr(input)))
+        {
+            retObj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
+            FoclObjectBoxFloat(retObj, Focl_StrToFloat(FoclStrCStr(input)));
+        }
+        else
+        {
+            retObj = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
+            FoclStrAssignStr(FoclObjectGetString(retObj), input);
+        }
+        FoclStringPoolFree(input, context->strPool);
+        return retObj;
+    }
+
     Focl_Object* varStrObj;
     FOCL_OBJ_VEC_AT_AS_STRING_OBJ(objVec, 1, varStrObj, context->strObjPool, context->strPool);
     Focl_String* varStr = FoclObjectGetString(varStrObj);
     Focl_Object* obj = Focl_FindObject(context->curEnv, context->strPool, varStr);
     if (obj == FOCL_OBJECT_ERROR)
     {
+        FoclStringPoolFree(input, context->strPool);
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
     }
-    Focl_Object* scanRet = FoclObjectScan(context->strObjPool, context->strPool, obj);
-    if (scanRet->type == FOCL_OBJ_TYPE_ERROR)
+
+    if (Focl_isInteger(FoclStrCStr(input)))
     {
-        return scanRet;
+        if (obj->type != FOCL_OBJ_TYPE_INT)
+        {
+            FoclStringPoolFree(input, context->strPool);
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+        }
+        obj->as.i = Focl_StrToInt(FoclStrCStr(input));
     }
-    FoclObjectRelease(scanRet, context);
+    else if (Focl_isFloat(FoclStrCStr(input)))
+    {
+        if (obj->type != FOCL_OBJ_TYPE_FLOAT)
+        {
+            FoclStringPoolFree(input, context->strPool);
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+        }
+        obj->as.f = Focl_StrToFloat(FoclStrCStr(input));
+    }
+    else
+    {
+        if (obj->type != FOCL_OBJ_TYPE_STR)
+        {
+            FoclStringPoolFree(input, context->strPool);
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+        }
+        FoclStrAssignStr(obj->as.data, input);
+    }
+
+    FoclStringPoolFree(input, context->strPool);
     return FoclObjPoolAllocAssign(context, obj);
 }
 Focl_Object* buildIn_set(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
@@ -143,7 +250,6 @@ Focl_Object* buildIn_set(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
 
         /* I decided to make Focl into a dynamic but strong type language! */
 
-        
         if (obj->type != src->type)
         {
             return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);

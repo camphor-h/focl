@@ -8,3 +8,4 @@ libfocl.a
 local.mk
 gmon.out
 analysis.txt
+test.txt

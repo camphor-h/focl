@@ -1723,6 +1723,11 @@ void FoclObjectAssign(Focl_Object* dst, Focl_Object* src, Focl_StringPool* strPo
         dst->as.vec = FoclVectorPoolAlloc(vecPool);
         FoclObjVectorDeepCopy(dst->as.vec, src->as.vec);
     }
+    else if (src->type == FOCL_OBJ_TYPE_FILE)
+    {
+        FoclObjectRetain(src);
+        dst->as = src->as;
+    }
     else
     {
         dst->as = src->as;
@@ -2033,7 +2038,7 @@ Focl_Object* FoclCmpdObjPoolAlloc(Focl_CmpdObjPool* cmpdObjPool, Focl_VectorPool
     return obj;
 }
 
-Focl_Object* FoclObjPoolWithNoStringAllocAssign(Focl_StrObjPool* objPool, Focl_Object* src)
+Focl_Object* FoclFlatObjPoolAllocAssign(Focl_FlatObjPool* objPool, Focl_Object* src)
 {
     Focl_Object* obj = FoclFlatObjPoolAlloc(objPool, src->type);
     obj->as = src->as;
@@ -2069,7 +2074,7 @@ Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src)
     }
     else
     {
-        return FoclObjPoolWithNoStringAllocAssign(context->flatObjPool, src);
+        return FoclFlatObjPoolAllocAssign(context->flatObjPool, src);
     }
 }
 Focl_Object* FoclObjectCopy(Focl_Context* context, Focl_Object* src)
@@ -3768,7 +3773,7 @@ void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer, Focl_StringPool* 
             FoclIOBufferPrintf(oBuffer, "%s", obj->as.i ? "true" : "false");
             break;
         case FOCL_OBJ_TYPE_FILE:
-            FoclIOBufferPrintf(oBuffer, "Ptr: %p\n", obj->as.ptr);
+            FoclIOBufferPrintf(oBuffer, "Ptr: %p", obj->as.ptr);
             break;
         case FOCL_OBJ_TYPE_STR: /* FALLTHROUGH */
         case FOCL_OBJ_TYPE_ERROR:
