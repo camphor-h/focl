@@ -1772,12 +1772,17 @@ Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_Strin
             return FoclObjectError(strObjPool, strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
         }
         FoclObjectRetain(obj);
-        return obj;
     }
     else if (Focl_isCmdSubstition_View(strView))
     {
         Focl_StringView cmdStrView = {strView->len - 2, strView->strPtr + 1};
         return Focl_parseCommand(context, &cmdStrView);
+    }
+    else if (Focl_isBlock_View(strView))
+    {
+        obj = FoclStringObjPoolAlloc(strObjPool, strPool, FOCL_OBJ_TYPE_STR);
+        Focl_StringView blockStrView = {strView->len - 2, strView->strPtr + 1};
+        FoclStrAssignView(FoclObjectGetString(obj), &blockStrView);
     }
     else
     {
@@ -3598,11 +3603,6 @@ Focl_Object* FoclObjVecAt(Focl_Vector* objVec, size_t idx)
     return *(Focl_Object**)FoclVectorAtNoCheck(objVec, idx);
 }
 
-Focl_Object* Focl_parseBlock(Focl_Context* context, Focl_StringView* strView)
-{
-    Focl_StringView inner = FoclStringViewPeelBoth(strView);
-    return Focl_parseCommandSequence(context, &inner);
-}
 Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* strView)
 {
     Focl_StringView remaining = *strView;
@@ -3849,9 +3849,8 @@ Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     FoclContextCreateEnterChildEnv(context, FoclStrCStr(cmd->name));
     if (argsView.len > 2)
     {
-        Focl_StringView argView = FoclStringViewPeelBoth(&argsView);
         size_t argCount = FoclVectorGetSize(objVec);
-        Focl_StringView remaining = argView;
+        Focl_StringView remaining = argsView;
 
         Focl_String* argTmpStr = FoclStringPoolAlloc(context->strPool);
         for (size_t i = 0; i < argCount; i++)
@@ -3884,7 +3883,7 @@ Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     if (setjmp(context->returnBuf) == 0)
     {
         Focl_StringView procView = {cmd->proc->length, cmd->proc->data};
-        retValue = Focl_parseBlock(context, &procView);
+        retValue = Focl_parseCommandSequence(context, &procView);
     }
     else
     {

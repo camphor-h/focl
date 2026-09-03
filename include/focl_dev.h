@@ -394,8 +394,8 @@ void LinkObjectWithName(Focl_Context* context, Focl_Object* obj, const Focl_Stri
 
 Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView);
 
-Focl_Object* Focl_parseBlock(Focl_Context* context, Focl_StringView* strView);
 Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* strView);
+Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView);
 Focl_Object* Focl_parseLine(Focl_Context* context, Focl_String* lineStr);
 Focl_Command* Focl_FindCommand(Focl_Context* context, const Focl_String* target);
 

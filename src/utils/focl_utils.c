@@ -339,8 +339,7 @@ Focl_Object* buildIn_if(Focl_Context* context, Focl_Vector* objVec, Focl_Command
         {
             return FoclObjectError(context->strObjPool, context->strPool, FOCl_ERR_INVALID_BLOCK);
         }
-        Focl_StringView condExpr = FoclStringViewPeelBoth(&condBlock);
-        Focl_Object* condResult = Focl_exprBool(context, &condExpr);
+        Focl_Object* condResult = Focl_exprBool(context, &condBlock);
         if (condResult->type == FOCL_OBJ_TYPE_ERROR)
         {
             return condResult;
@@ -357,7 +356,7 @@ Focl_Object* buildIn_if(Focl_Context* context, Focl_Vector* objVec, Focl_Command
             Focl_String* execBlockStr;
             Focl_StringView execBlock;
             FOCL_OBJ_VEC_AT_AS_STRING_VIEW(objVec, i + 1, execBlockObj, execBlockStr, execBlock, context->strObjPool, context->strPool);
-            return Focl_parseBlock(context, &execBlock);
+            return Focl_parseCommandSequence(context, &execBlock);
         }
         FoclObjectRelease(condResult, context);
 
@@ -388,7 +387,7 @@ Focl_Object* buildIn_if(Focl_Context* context, Focl_Vector* objVec, Focl_Command
             Focl_String* elseBlockStr;
             Focl_StringView elseBlock;
             FOCL_OBJ_VEC_AT_AS_STRING_VIEW(objVec, i + 3, elseBlockObj, elseBlockStr, elseBlock, context->strObjPool, context->strPool);
-            return Focl_parseBlock(context, &elseBlock);
+            return Focl_parseCommandSequence(context, &elseBlock);
         }
         else
         {
@@ -413,8 +412,7 @@ Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCl_ERR_INVALID_BLOCK);
     }
-    Focl_StringView condExpr = FoclStringViewPeelBoth(&condBlock);
-    Focl_Object* condResult = Focl_exprBool(context, &condExpr);
+    Focl_Object* condResult = Focl_exprBool(context, &condBlock);
     if (condResult->type == FOCL_OBJ_TYPE_ERROR)
     {
         return condResult;
@@ -438,7 +436,7 @@ Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
         Focl_String* execBlockStr;
         Focl_StringView execBlock;
         FOCL_OBJ_VEC_AT_AS_STRING_VIEW_WITH_CLEAR(objVec, 1, execBlockObj, execBlockStr, execBlock, context->strObjPool, context->strPool, FoclObjectRelease(condResult, context));
-        Focl_Object* bodyResult = Focl_parseBlock(context, &execBlock);
+        Focl_Object* bodyResult = Focl_parseCommandSequence(context, &execBlock);
         if (bodyResult->type == FOCL_OBJ_TYPE_ERROR)
         {
             FoclObjectRelease(result, context);
@@ -449,7 +447,7 @@ Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
         FoclObjectRelease(result, context);
         result = bodyResult;
         setjmp(context->continueBuf);
-        condResult = Focl_exprBool(context, &condExpr);
+        condResult = Focl_exprBool(context, &condBlock);
         if (condResult->type == FOCL_OBJ_TYPE_ERROR)
         {
             FoclObjectRelease(result, context);
@@ -486,7 +484,7 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
     Focl_String* initBlockStr;
     Focl_StringView initBlock;
     FOCL_OBJ_VEC_AT_AS_STRING_VIEW(objVec, 0, initBlockObj, initBlockStr, initBlock, context->strObjPool, context->strPool);
-    Focl_Object* initResult = Focl_parseBlock(context, &initBlock);
+    Focl_Object* initResult = Focl_parseCommandSequence(context, &initBlock);
     if (initResult->type == FOCL_OBJ_TYPE_ERROR)
     {
         return initResult;
@@ -500,7 +498,6 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCl_ERR_INVALID_BLOCK);
     }
-    Focl_StringView condExpr = FoclStringViewPeelBoth(&condBlock);
     Focl_Object* updateBlockObj;
     Focl_String* updateBlockStr;
     Focl_StringView updateBlock;
@@ -514,7 +511,7 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
     context->hasContinueBuf = true;
     while (1)
     {
-        Focl_Object* condResult = Focl_exprBool(context, &condExpr);
+        Focl_Object* condResult = Focl_exprBool(context, &condBlock);
         if (condResult->type == FOCL_OBJ_TYPE_ERROR)
         {
             FoclObjectRelease(result, context);
@@ -535,7 +532,7 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
             context->hasContinueBuf = false;
             return result;
         }
-        Focl_Object* bodyResult = Focl_parseBlock(context, &bodyBlock);
+        Focl_Object* bodyResult = Focl_parseCommandSequence(context, &bodyBlock);
         if (bodyResult->type == FOCL_OBJ_TYPE_ERROR)
         {
             FoclObjectRelease(result, context);
@@ -547,7 +544,7 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
         result = bodyResult;
         {
             setjmp(context->continueBuf);
-            Focl_Object* updateResult = Focl_parseBlock(context, &updateBlock);
+            Focl_Object* updateResult = Focl_parseCommandSequence(context, &updateBlock);
             if (updateResult->type == FOCL_OBJ_TYPE_ERROR)
             {
                 FoclObjectRelease(result, context);
