@@ -41,6 +41,8 @@
 void FoclFlatObjPoolFree(Focl_Object* obj, Focl_FlatObjPool* objPool);
 void FoclStringObjPoolFree(Focl_Object* obj, Focl_StrObjPool* objPool);
 void FoclListObjPoolFree(Focl_Object* obj, Focl_ListObjPool* listObjPool);
+Focl_Dict* FoclDictPoolAlloc(Focl_DictPool* dictPool, Focl_Context* context);
+void FoclDictPoolFree(Focl_Dict* dict, Focl_DictPool* dictPool);
 
 void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_StringView* src);
 
@@ -1154,6 +1156,29 @@ void freeFoclHashTableUnit(Focl_HashTableUnit* unit, Focl_KeyOpDt* keyOpDt, Focl
     Focl_free(unit);
 }
 
+size_t Focl_RegisterCPtr(char* name, void (*ctfunc_)(void* ptr, void* ctx), void (*dtfunc_)(void* ptr, void* ctx), Focl_Context* context)
+{
+    size_t id = FoclVectorGetSize(context->cptrVec);
+    Focl_String* nameStr = FoclStringPoolAlloc(context->strPool);
+    FoclStrAssign(nameStr, name, strlen(name));
+    Focl_CPtrType type = {.ctfunc = ctfunc_, .dtfunc = dtfunc_, .name = nameStr};
+    FoclVectorPushBack(context->cptrVec, &type);
+    return id;
+}
+void FoclCPtrTypeOpDt(Focl_CPtrType* cptrType, Focl_StringPool* strPool)
+{
+    FoclStringPoolFree(cptrType->name, strPool);
+}
+void FoclCPtrTypeOpDtVoid(void* cptrType, void* strPool)
+{
+    FoclCPtrTypeOpDt(cptrType, strPool);
+}
+void freeFoclCPtrVec(Focl_CPtrTypeVec* cptrTypeVec, Focl_StringPool* strPool)
+{
+    Focl_TypeOpDt opDt = {.func = FoclCPtrTypeOpDtVoid, .ctx = strPool};
+    freeFoclVector(cptrTypeVec, &opDt);
+}
+
 Focl_HashTable* createFoclHashTable(size_t iCapacity, float loadFactor_, Focl_HashFunc hashFunc_)
 {
     Focl_HashTable* table = (Focl_HashTable*)Focl_malloc(sizeof(Focl_HashTable));
@@ -1636,6 +1661,19 @@ void FoclVectorPoolFree(Focl_Vector* vec, Focl_VectorPool* vecPool)
 
 /* VECTOR POOL */
 
+/* C PTR POOL */
+
+Focl_CPtrPool* createFoclCPtrPool()
+{
+    return createFoclPool(sizeof(Focl_CPtr), FOCL_CPTR_POOL_ITEM_PER_BLOCK, FOCL_CPTR_POOL_INIT_BLOCK_COUNT, NULL);
+}
+void freeFoclCPtrPool(Focl_CPtrPool* cptrPool)
+{
+    freeFoclPool(cptrPool, NULL);
+}
+
+/* C PTR POOL */
+
 /* VAR */
 
 Focl_Obj_Int FoclObjectUnboxInt(Focl_Object* obj)
@@ -1656,7 +1694,11 @@ Focl_Vector* FoclObjectGetVector(Focl_Object* obj)
 }
 void* FoclObjectGetPtr(Focl_Object* obj)
 {
-    return (obj->as.ptr);
+    return (obj->as.cptr->ptr);
+}
+Focl_Dict* FoclObjectGetDict(Focl_Object* obj)
+{
+    return (obj->as.dict);
 }
 void FoclObjectBoxInt(Focl_Object* obj, Focl_Obj_Int i_)
 {
@@ -1672,7 +1714,11 @@ bool isFoclObjectUseString(Focl_Object* obj)
 }
 bool isFoclObjectCompound(Focl_Object* obj)
 {
-    return (obj->type >= FOCL_OBJ_TYPE_LIST && obj->type <= FOCL_OBJ_TYPE_LIST);
+    return (obj->type >= FOCL_OBJ_TYPE_LIST && obj->type <= FOCL_OBJ_TYPE_DICT);
+}
+bool isFoclObjectDict(Focl_Object* obj)
+{
+    return (obj->type == FOCL_OBJ_TYPE_DICT);
 }
 bool isFoclObjectPtr(Focl_Object* obj)
 {
@@ -1713,21 +1759,25 @@ Focl_Object* createStringFoclObject(Focl_Obj_Type type_, Focl_StringPool* strPoo
     obj->as.data = FoclStringPoolAlloc(strPool);
     return obj;
 }
-void FoclObjectAssign(Focl_Object* dst, Focl_Object* src, Focl_StringPool* strPool, Focl_VectorPool* vecPool)
+void FoclObjectAssign(Focl_Object* dst, Focl_Object* src, Focl_Context* context)
 {
     /* This is a strong type language! You should do a type check before every assign! */
 
     if (isFoclObjectUseString(src))
     {
-        FoclStringPoolFree(dst->as.data, strPool);
-        dst->as.data = FoclStringPoolAlloc(strPool);
+        FoclStringPoolFree(dst->as.data, context->strPool);
+        dst->as.data = FoclStringPoolAlloc(context->strPool);
         FoclStrAssignStr(dst->as.data, src->as.data);
     }
-    else if (isFoclObjectCompound(src))
+    else if (src->type == FOCL_OBJ_TYPE_LIST)
     {
-        FoclVectorPoolFree(dst->as.vec, vecPool);
-        dst->as.vec = FoclVectorPoolAlloc(vecPool);
+        FoclVectorPoolFree(dst->as.vec, context->objVecPool);
+        dst->as.vec = FoclVectorPoolAlloc(context->objVecPool);
         FoclObjVectorDeepCopy(dst->as.vec, src->as.vec);
+    }
+    else if (src->type == FOCL_OBJ_TYPE_DICT)
+    {
+        FoclDictObjectAssign(dst, src, context);
     }
     else if (isFoclObjectPtr(src))
     {
@@ -1836,9 +1886,13 @@ void FoclObjectRelease(Focl_Object* obj, Focl_Context* context)
         {
             FoclStringObjPoolFree(obj, context->strObjPool);
         }
-        else if (isFoclObjectCompound(obj))
+        else if (obj->type == FOCL_OBJ_TYPE_LIST)
         {
             FoclListObjPoolFree(obj, context->listObjPool);
+        }
+        else if (obj->type == FOCL_OBJ_TYPE_DICT)
+        {
+            FoclDictObjPoolFree(obj, context);
         }
         else if (isFoclObjectPtr(obj))
         {
@@ -1895,6 +1949,11 @@ Focl_String* FoclObjectStringize(Focl_Object* obj, Focl_StringPool* strPool) /* 
             FoclStrAssignStr(dstStr, tempStr);
             FoclStringPoolFree(tempStr, strPool);
             break;
+        case FOCL_OBJ_TYPE_DICT:
+            tempStr = FoclDictObjStringize(obj, strPool);
+            FoclStrAssignStr(dstStr, tempStr);
+            FoclStringPoolFree(tempStr, strPool);
+            break;
         default:
             printf(FOCL_ERR_YSNBH);
             break;
@@ -1937,6 +1996,31 @@ Focl_String* FoclListObjStringize(Focl_Object* listObj, Focl_StringPool* strPool
     FoclStringPoolFree(tempStr, strPool);
     return dstStr;
 }
+Focl_String* FoclDictObjStringize(Focl_Object* dictObj, Focl_StringPool* strPool) /* free the return string! */
+{
+    Focl_Dict* dict = dictObj->as.dict;
+    Focl_String* dstStr = FoclStringPoolAlloc(strPool);
+    bool first = true;
+    for (size_t i = 0; i < dict->capacity; i++)
+    {
+        Focl_HashTableUnit* unit = dict->buckets[i];
+        while (unit != NULL)
+        {
+            if (!first)
+            {
+                FoclStrAppend(dstStr, " ", sizeof(" ") - 1);
+            }
+            first = false;
+            FoclStrAppendStr(dstStr, (Focl_String*)unit->key);
+            FoclStrAppend(dstStr, " ", sizeof(" ") - 1);
+            Focl_String* valStr = FoclObjectStringize((Focl_Object*)unit->value, strPool);
+            FoclStrAppendStr(dstStr, valStr);
+            FoclStringPoolFree(valStr, strPool);
+            unit = unit->next;
+        }
+    }
+    return dstStr;
+}
 void Focl_LinkObject(Focl_Object* obj, Focl_Environment* env, Focl_Context* context, const char* name)
 {
     Focl_String* fullNSName = FoclStringPoolAlloc(context->strPool);
@@ -1951,7 +2035,7 @@ void FoclObjectReleaseOpDtVoid(void* obj, void* ctx)
     FoclObjectRelease(obj, ctx);
 }
 
-void FoclObjectWithNoStringOpClVoid(void* obj_, void* ctx)
+void FoclFlatObjOpClVoid(void* obj_, void* ctx)
 {
     (void)ctx;
     Focl_Object* obj = obj_;
@@ -2031,30 +2115,25 @@ void FoclDictObjectOpCtVoid(void* obj, void* ctx)
 }
 void FoclDictObjectOpDt(Focl_Object* obj, Focl_Context* context)
 {
-    Focl_HashTable* table = obj->as.dict;
-    Focl_HashTableUnit* unit;
-    Focl_HashTableUnit* next;
-
-    for (size_t i = 0; i < table->capacity; i++)
-    {
-        unit = table->buckets[i];
-        while (unit != NULL)
-        {
-            next = unit->next;
-            FoclObjectRelease(unit);
-            unit = next;
-        }
-    }
-    table->size = 0;
-    FoclDictPoolFree(obj->as.dict, context);
+    Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
+    Focl_ValueOpDt valueOpDt = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
+    FoclHashTableClear(obj->as.dict, &keyOpDt, &valueOpDt);
+    FoclDictPoolFree(obj->as.dict, context->dictPool);
 }
 void FoclDictObjectOpDtVoid(void* obj, void* context)
 {
     FoclDictObjectOpDt(obj, context);
 }
-void FoclDictObjectOpCl(Focl_Object* obj)
+void FoclDictObjectOpCl(Focl_Object* obj, Focl_Context* context)
 {
-    
+    obj->refCount = 1;
+    Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
+    Focl_ValueOpDt valueOpDt = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
+    FoclHashTableClear(obj->as.dict, &keyOpDt, &valueOpDt);
+}
+void FoclDictObjectOpClVoid(void* obj, void* context)
+{
+    FoclDictObjectOpCl(obj, context);
 }
 
 /* OBJ POOL */
@@ -2076,7 +2155,7 @@ Focl_ListObjPool* createFoclListObjPool(Focl_VectorPool* objVecPool)
 
 Focl_Object* FoclFlatObjPoolAlloc(Focl_FlatObjPool* objPool, Focl_Obj_Type type_)
 {
-    Focl_TypeOpCl opCl = {.ctx = NULL, .func = FoclObjectWithNoStringOpClVoid};
+    Focl_TypeOpCl opCl = {.ctx = NULL, .func = FoclFlatObjOpClVoid};
     Focl_Object* obj = (Focl_Object*)FoclPoolAllocEx(objPool, NULL, &opCl);
     obj->type = type_;
     return obj;
@@ -2098,6 +2177,14 @@ Focl_Object* FoclListObjPoolAlloc(Focl_ListObjPool* listObjPool, Focl_VectorPool
     obj->type = FOCL_OBJ_TYPE_LIST;
     return obj;
 }
+Focl_Object* FoclDictObjPoolAlloc(Focl_DictObjPool* dictObjPool, Focl_Context* context)
+{
+    Focl_TypeOpCt opCt = {.ctx = context, .func = FoclDictObjectOpCtVoid};
+    Focl_TypeOpCl opCl = {.ctx = context, .func = FoclDictObjectOpClVoid};
+    Focl_Object* obj = (Focl_Object*)FoclPoolAllocEx(dictObjPool, &opCt, &opCl);
+    obj->type = FOCL_OBJ_TYPE_DICT;
+    return obj;
+}
 
 Focl_Object* FoclFlatObjPoolAllocAssign(Focl_FlatObjPool* objPool, Focl_Object* src)
 {
@@ -2117,6 +2204,49 @@ Focl_Object* FoclListObjPoolAllocAssign(Focl_ListObjPool* listObjPool, Focl_Vect
     FoclVectorAssignVector(obj->as.vec, src->as.vec);
     return obj;
 }
+Focl_Object* FoclDictObjPoolAllocAssign(Focl_DictObjPool* dictObjPool, Focl_Context* context, Focl_Object* src)
+{
+    Focl_Object* obj = FoclDictObjPoolAlloc(dictObjPool, context);
+    Focl_Dict* srcDict = src->as.dict;
+    Focl_Dict* dstDict = obj->as.dict;
+    Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
+    Focl_ValueOpDt valueOpDt = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
+    for (size_t i = 0; i < srcDict->capacity; i++)
+    {
+        Focl_HashTableUnit* unit = srcDict->buckets[i];
+        while (unit != NULL)
+        {
+            Focl_String* key = FoclStringPoolAlloc(context->strPool);
+            FoclStrAssignStr(key, (Focl_String*)unit->key);
+            Focl_Object* value = (Focl_Object*)unit->value;
+            FoclObjectRetain(value);
+            FoclHashTableInsert(dstDict, key, value, StrKeyCompare, &keyOpDt, &valueOpDt);
+            unit = unit->next;
+        }
+    }
+    return obj;
+}
+void FoclDictObjectAssign(Focl_Object* dst, Focl_Object* src, Focl_Context* context)
+{
+    Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
+    Focl_ValueOpDt valueOpDt = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
+    FoclHashTableClear(dst->as.dict, &keyOpDt, &valueOpDt);
+    Focl_Dict* srcDict = src->as.dict;
+    Focl_Dict* dstDict = dst->as.dict;
+    for (size_t i = 0; i < srcDict->capacity; i++)
+    {
+        Focl_HashTableUnit* unit = srcDict->buckets[i];
+        while (unit != NULL)
+        {
+            Focl_String* key = FoclStringPoolAlloc(context->strPool);
+            FoclStrAssignStr(key, (Focl_String*)unit->key);
+            Focl_Object* value = (Focl_Object*)unit->value;
+            FoclObjectRetain(value);
+            FoclHashTableInsert(dstDict, key, value, StrKeyCompare, &keyOpDt, &valueOpDt);
+            unit = unit->next;
+        }
+    }
+}
 Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src)
 {
     
@@ -2124,9 +2254,13 @@ Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src)
     {
         return FoclStringObjPoolAllocAssign(context->strObjPool, context->strPool, src);
     }
-    else if (isFoclObjectCompound(src))
+    else if (src->type == FOCL_OBJ_TYPE_LIST)
     {
         return FoclListObjPoolAllocAssign(context->listObjPool, context->objVecPool, src);
+    }
+    else if (src->type == FOCL_OBJ_TYPE_DICT)
+    {
+        return FoclDictObjPoolAllocAssign(context->dictObjPool, context, src);
     }
     else if (isFoclObjectPtr(src))
     {
@@ -2155,6 +2289,11 @@ void FoclListObjPoolFree(Focl_Object* obj, Focl_ListObjPool* listObjPool)
 {
     FoclPoolFree(obj, listObjPool);
 }
+void FoclDictObjPoolFree(Focl_Object* obj, Focl_Context* context)
+{
+    FoclDictObjectOpCl(obj, context);
+    FoclPoolFree(obj, context->dictObjPool);
+}
 void freeFoclFlatObjPool(Focl_FlatObjPool* objPool)
 {
     freeFoclPool(objPool, NULL);
@@ -2169,8 +2308,18 @@ void freeFoclListObjPool(Focl_ListObjPool* listObjPool, Focl_Context* ctx)
     Focl_TypeOpDt opDt = {.ctx = ctx, .func = FoclListObjectOpDtVoid};
     freeFoclPool(listObjPool, &opDt);
 }
+Focl_DictObjPool* createFoclDictObjPool(Focl_Context* context)
+{
+    Focl_TypeOpCt opCt = {.ctx = context, .func = FoclDictObjectOpCtVoid};
+    return createFoclPool(sizeof(Focl_Object), FOCL_OBJ_POOL_ITEM_PER_BLOCK, FOCL_OBJ_POOL_BLOCK_COUNT_INIT, &opCt);
+}
+void freeFoclDictObjPool(Focl_DictObjPool* dictObjPool, Focl_Context* context)
+{
+    Focl_TypeOpDt opDt = {.ctx = context, .func = FoclDictObjectOpDtVoid};
+    freeFoclPool(dictObjPool, &opDt);
+}
 
-Focl_Object* FoclPtrObjAlloc(Focl_FlatObjPool* objPool, void* ptr, Focl_Obj_Type type)
+Focl_Object* FoclPtrObjAlloc(Focl_FlatObjPool* objPool, void* ptr, size_t )
 {
     Focl_Object* obj = FoclFlatObjPoolAlloc(objPool, type);
     obj->as.ptr = ptr;
@@ -2365,7 +2514,7 @@ Focl_DictPool* createFoclDictPool()
 }
 Focl_Dict* FoclDictPoolAlloc(Focl_DictPool* dictPool, Focl_Context* context)
 {
-    return FoclHashTablePoolAlloc(dictPool, context, FOCL_COMMAND_TABLE_INIT_CAPACITY, FOCL_COMMAND_TABLE_LOAD_FACTOR);
+    return FoclHashTablePoolAlloc(dictPool, context, FOCL_DICT_INIT_CAPACITY, FOCL_DICT_LOAD_FACTOR);
 }
 void FoclDictPoolFree(Focl_Dict* dict, Focl_DictPool* dictPool)
 {
@@ -2373,7 +2522,7 @@ void FoclDictPoolFree(Focl_Dict* dict, Focl_DictPool* dictPool)
 }
 void freeFoclDictPool(Focl_DictPool* dictPool, Focl_Context* context)
 {
-    Focl_ValueOpDt valueOpDt_ = {.ctx = context->strPool, .func = FoclObjectReleaseOpDtVoid};
+    Focl_ValueOpDt valueOpDt_ = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
     freeFoclHashTablePool(dictPool, context, &valueOpDt_);
 }
 
@@ -2543,6 +2692,8 @@ Focl_Context* createFoclContext(FILE* outpotfPtr, int argc, char** argv)
     context->flatObjPool = createFoclFlatObjPool();
     context->strObjPool = createFoclStringObjPool(context->strPool);
     context->listObjPool = createFoclListObjPool(context->objVecPool);
+    context->dictObjPool = createFoclDictObjPool(context);
+    context->cptrVec = createFoclVector(sizeof(Focl_CPtr), FOCL_CPTR_VECTOR_INIT_CAPACITY);
     context->envPool = createFoclEnvPool(context);
     context->outBuffer = createFoclIOBuffer(outpotfPtr, FOCL_IOBUFFER_STDOUT_DEFAULT_SIZE);
     context->globalEnv = FoclEnvPoolAlloc(context->envPool, NULL, context, NULL);
@@ -2568,10 +2719,12 @@ void freeFoclContext(Focl_Context* context)
     }
     while (cEnv != NULL);
     freeFoclEnvPool(context->envPool, context);
+    freeFoclCPtrVec(context->cptrVec, context->strPool);
     freeFoclObjTablePool(context->objTablePool, context);
     freeFoclListObjPool(context->listObjPool, context);
     freeFoclStringObjPool(context->strObjPool, context->strPool);
     freeFoclFlatObjPool(context->flatObjPool);
+    freeFoclDictObjPool(context->dictObjPool, context);
     freeFoclDictPool(context->dictPool, context);
     freeFoclCommandTablePool(context->cmdTablePool, context);
     freeFoclStringPool(context->strPool);
@@ -3415,39 +3568,20 @@ void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_String
 
                 if (cmdResult != NULL && cmdResult->type != FOCL_OBJ_TYPE_ERROR)
                 {
-                    if (isFoclObjectUseString(cmdResult))
+                    Focl_String* outStr = FoclObjectStringize(cmdResult, context->strPool);
+                    if (outStr->length > 0)
                     {
-                        Focl_String* outStr = FoclObjectGetString(cmdResult);
-                        if (outStr != NULL && outStr->data != NULL && outStr->length > 0)
+                        size_t curLen = dst->length;
+                        size_t needed = curLen + outStr->length;
+                        while (needed >= dst->capacity)
                         {
-                            size_t curLen = dst->length;
-                            size_t needed = curLen + outStr->length;
-                            while (needed >= dst->capacity)
-                            {
-                                FoclStrReserve(dst, (dst->capacity == 0) ? 16 : dst->capacity * 2);
-                            }
-                            memcpy(dst->data + curLen, outStr->data, outStr->length);
-                            dst->length = curLen + outStr->length;
-                            dst->data[dst->length] = '\0';
+                            FoclStrReserve(dst, (dst->capacity == 0) ? 16 : dst->capacity * 2);
                         }
+                        memcpy(dst->data + curLen, outStr->data, outStr->length);
+                        dst->length = curLen + outStr->length;
+                        dst->data[dst->length] = '\0';
                     }
-                    else if (isFoclObjectCompound(cmdResult))
-                    {
-                        Focl_String* listStr = FoclListObjStringize(cmdResult, context->strPool);
-                        if (listStr != NULL && listStr->length > 0)
-                        {
-                            size_t curLen = dst->length;
-                            size_t needed = curLen + listStr->length;
-                            while (needed >= dst->capacity)
-                            {
-                                FoclStrReserve(dst, (dst->capacity == 0) ? 16 : dst->capacity * 2);
-                            }
-                            memcpy(dst->data + curLen, listStr->data, listStr->length);
-                            dst->length = curLen + listStr->length;
-                            dst->data[dst->length] = '\0';
-                        }
-                        FoclStringPoolFree(listStr, context->strPool);
-                    }
+                    FoclStringPoolFree(outStr, context->strPool);
                     FoclObjectRelease(cmdResult, context);
                 }
                 readPos = cmdEnd + 1;
@@ -3875,6 +4009,11 @@ void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer, Focl_StringPool* 
             Focl_String* listStr = FoclListObjStringize(obj, strPool);
             FoclIOBufferPrintf(oBuffer, "%s", FoclStrCStr(listStr));
             FoclStringPoolFree(listStr, strPool);
+            break;
+        case FOCL_OBJ_TYPE_DICT:
+            Focl_String* dictStr = FoclDictObjStringize(obj, strPool);
+            FoclIOBufferPrintf(oBuffer, "%s", FoclStrCStr(dictStr));
+            FoclStringPoolFree(dictStr, strPool);
             break;
         default:
             printf(FOCL_ERR_YSNBH);

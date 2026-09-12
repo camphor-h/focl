@@ -254,7 +254,7 @@ Focl_Object* buildIn_set(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
         {
             return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
         }
-        FoclObjectAssign(obj, src, context->strPool, context->objVecPool);
+        FoclObjectAssign(obj, src, context);
     }
 
     return FoclObjPoolAllocAssign(context, obj);
@@ -1337,6 +1337,184 @@ Focl_Object* buildIn_lappend(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     FoclVectorPushBack(FoclObjectGetVector(lObjName), &srcObj);
     return FoclObjectVoid(context->flatObjPool);
 }
+Focl_Object* buildIn_dict(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    size_t argCount = FoclVectorGetSize(objVec);
+    if (argCount < 1)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* subCmdObj;
+    Focl_String* subCmd;
+    FOCL_OBJ_VEC_AT_AS_STRING(objVec, 0, subCmdObj, subCmd, context->strObjPool, context->strPool);
+
+    Focl_KeyOpDt keyOpDt = {.ctx = context->strPool, .func = FoclStringPoolFreeOpDtVoid};
+    Focl_ValueOpDt valueOpDt = {.ctx = context, .func = FoclObjectReleaseOpDtVoid};
+
+    if (FoclStrComp(subCmd, "create") == 0)
+    {
+        if ((argCount - 1) % 2 != 0)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        Focl_Object* dObj = FoclDictObjPoolAlloc(context->dictObjPool, context);
+        Focl_Dict* dict = FoclObjectGetDict(dObj);
+        for (size_t i = 1; i + 1 < argCount; i += 2)
+        {
+            Focl_Object* keyObj = FoclObjVecAt(objVec, i);
+            Focl_Object* valObj = FoclObjVecAt(objVec, i + 1);
+            Focl_String* key = FoclObjectStringize(keyObj, context->strPool);
+            FoclObjectRetain(valObj);
+            FoclHashTableInsert(dict, key, valObj, StrKeyCompare, &keyOpDt, &valueOpDt);
+        }
+        return dObj;
+    }
+    else if (FoclStrComp(subCmd, "set") == 0)
+    {
+        if (argCount != 4)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        Focl_Object* varNameObj;
+        Focl_String* varName;
+        FOCL_OBJ_VEC_AT_AS_STRING(objVec, 1, varNameObj, varName, context->strObjPool, context->strPool);
+        Focl_Object* dObj = Focl_FindObject(context->curEnv, context->strPool, varName);
+        if (dObj == FOCL_OBJECT_ERROR)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+        }
+        if (dObj->type != FOCL_OBJ_TYPE_DICT)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_INVALID_ARG);
+        }
+        Focl_Object* keyObj = FoclObjVecAt(objVec, 2);
+        Focl_Object* valObj = FoclObjVecAt(objVec, 3);
+        Focl_String* key = FoclObjectStringize(keyObj, context->strPool);
+        FoclObjectRetain(valObj);
+        FoclHashTableInsert(dObj->as.dict, key, valObj, StrKeyCompare, &keyOpDt, &valueOpDt);
+        return FoclObjectVoid(context->flatObjPool);
+    }
+    else if (FoclStrComp(subCmd, "get") == 0)
+    {
+        if (argCount != 3)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        Focl_Object* dObj;
+        FOCL_OBJ_VEC_AT_AS_DICT_OBJ(objVec, 1, dObj, context->strObjPool, context->strPool);
+        Focl_Object* keyObj = FoclObjVecAt(objVec, 2);
+        Focl_String* key = FoclObjectStringize(keyObj, context->strPool);
+        Focl_Object* valObj = (Focl_Object*)FoclHashTableFind(dObj->as.dict, key, StrKeyCompare);
+        FoclStringPoolFree(key, context->strPool);
+        if (valObj == NULL)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, "key not found");
+        }
+        FoclObjectRetain(valObj);
+        return valObj;
+    }
+    else if (FoclStrComp(subCmd, "exists") == 0)
+    {
+        if (argCount != 3)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        Focl_Object* dObj;
+        FOCL_OBJ_VEC_AT_AS_DICT_OBJ(objVec, 1, dObj, context->strObjPool, context->strPool);
+        Focl_Object* keyObj = FoclObjVecAt(objVec, 2);
+        Focl_String* key = FoclObjectStringize(keyObj, context->strPool);
+        Focl_Object* valObj = (Focl_Object*)FoclHashTableFind(dObj->as.dict, key, StrKeyCompare);
+        FoclStringPoolFree(key, context->strPool);
+        return FoclObjectBool(context->flatObjPool, (valObj != NULL) ? FOCL_OBJ_TRUE : FOCL_OBJ_FALSE);
+    }
+    else if (FoclStrComp(subCmd, "keys") == 0)
+    {
+        if (argCount != 2)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        Focl_Object* dObj;
+        FOCL_OBJ_VEC_AT_AS_DICT_OBJ(objVec, 1, dObj, context->strObjPool, context->strPool);
+        Focl_Dict* dict = dObj->as.dict;
+        Focl_Object* listObj = FoclListObjPoolAlloc(context->listObjPool, context->objVecPool);
+        Focl_Vector* vec = FoclObjectGetVector(listObj);
+        for (size_t i = 0; i < dict->capacity; i++)
+        {
+            Focl_HashTableUnit* unit = dict->buckets[i];
+            while (unit != NULL)
+            {
+                Focl_Object* keyObj = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
+                FoclStrAssignStr(FoclObjectGetString(keyObj), (Focl_String*)unit->key);
+                FoclObjectRetain(keyObj);
+                FoclVectorPushBack(vec, &keyObj);
+                unit = unit->next;
+            }
+        }
+        return listObj;
+    }
+    else if (FoclStrComp(subCmd, "values") == 0)
+    {
+        if (argCount != 2)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        Focl_Object* dObj;
+        FOCL_OBJ_VEC_AT_AS_DICT_OBJ(objVec, 1, dObj, context->strObjPool, context->strPool);
+        Focl_Dict* dict = dObj->as.dict;
+        Focl_Object* listObj = FoclListObjPoolAlloc(context->listObjPool, context->objVecPool);
+        Focl_Vector* vec = FoclObjectGetVector(listObj);
+        for (size_t i = 0; i < dict->capacity; i++)
+        {
+            Focl_HashTableUnit* unit = dict->buckets[i];
+            while (unit != NULL)
+            {
+                Focl_Object* valObj = (Focl_Object*)unit->value;
+                FoclObjectRetain(valObj);
+                FoclVectorPushBack(vec, &valObj);
+                unit = unit->next;
+            }
+        }
+        return listObj;
+    }
+    else if (FoclStrComp(subCmd, "size") == 0)
+    {
+        if (argCount != 2)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        Focl_Object* dObj;
+        FOCL_OBJ_VEC_AT_AS_DICT_OBJ(objVec, 1, dObj, context->strObjPool, context->strPool);
+        Focl_Object* sizeObj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
+        FoclObjectBoxInt(sizeObj, (Focl_Obj_Int)dObj->as.dict->size);
+        return sizeObj;
+    }
+    else if (FoclStrComp(subCmd, "unset") == 0)
+    {
+        if (argCount != 3)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        }
+        Focl_Object* varNameObj;
+        Focl_String* varName;
+        FOCL_OBJ_VEC_AT_AS_STRING(objVec, 1, varNameObj, varName, context->strObjPool, context->strPool);
+        Focl_Object* dObj = Focl_FindObject(context->curEnv, context->strPool, varName);
+        if (dObj == FOCL_OBJECT_ERROR)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+        }
+        if (dObj->type != FOCL_OBJ_TYPE_DICT)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_INVALID_ARG);
+        }
+        Focl_Object* keyObj = FoclObjVecAt(objVec, 2);
+        Focl_String* key = FoclObjectStringize(keyObj, context->strPool);
+        FoclHashTableDelete(dObj->as.dict, key, StrKeyCompare, &keyOpDt, &valueOpDt);
+        FoclStringPoolFree(key, context->strPool);
+        return FoclObjectVoid(context->flatObjPool);
+    }
+    return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
+}
 
 #ifdef MEMORY_ALLOC_CHECK
 Focl_Object* buildIn_mcheck(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
@@ -1436,6 +1614,7 @@ void Focl_RegisterUtilsCommand(Focl_Context* context)
     FoclRegisterCommand(context, "llength", buildIn_llength);
     FoclRegisterCommand(context, "lindex", buildIn_lindex);
     FoclRegisterCommand(context, "lappend", buildIn_lappend);
+    FoclRegisterCommand(context, "dict", buildIn_dict);
     FoclRegisterCommand(context, "isint", buildIn_isint);
     FoclRegisterCommand(context, "error", buildIn_error);
     FoclRegisterCommand(context, "source", buildIn_source);
