@@ -8,6 +8,7 @@ libfocl.a
 local.mk
 gmon.out
 analysis.txt
+hello.txt
 test.txt
 
 # here are my own focl libs
