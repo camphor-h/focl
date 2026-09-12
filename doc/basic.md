@@ -235,14 +235,30 @@ append msg " World!"  ; msg becomes "Hello World!"
 | `list` | `list [elem1] [elem2] ...` | Create a new list |
 | `llength` | `llength list` | Get list length |
 | `lindex` | `lindex list index` | Get element at index |
-| `lappend` | `lappend list value` | Append value to list |
+| `lappend` | `lappend list value` | Append value to list variable |
+| `lrange` | `lrange list first last` | Get sublist from `first` to `last` (inclusive) |
+| `lreverse` | `lreverse list` | Get a reversed copy of the list |
+| `lsearch` | `lsearch list value` | Index of first matching value, or `-1` |
+| `linsert` | `linsert list index elem ...` | Insert elements before `index` |
+| `lreplace` | `lreplace list first last ?elem ...?` | Replace range `[first, last]` with the given elements |
+| `lset` | `lset listVar index value` | Set the element at `index` in the list variable |
+| `lassign` | `lassign list var1 var2 ...` | Assign elements to variables; returns the remaining list |
 
 **Examples:**
 ```
 set mylist [list 10 20 30 40]
-llength $mylist        ; returns 4
-lindex $mylist 2       ; returns 30
-lappend mylist 50      ; list becomes [10 20 30 40 50]
+llength $mylist         ; returns 4
+lindex $mylist 2        ; returns 30
+lappend mylist 50       ; list becomes [10 20 30 40 50]
+lrange $mylist 1 3      ; returns [20 30 40]
+lreverse $mylist        ; returns [50 40 30 20 10]
+lsearch $mylist 30      ; returns 2
+linsert $mylist 1 15    ; returns [10 15 20 30 40 50]
+lreplace $mylist 1 2 x y; returns [10 x y 40 50]
+lset mylist 0 99        ; mylist becomes [99 20 30 40 50]
+set a 0
+set b 0
+set rest [lassign $mylist a b]   ; a=99, b=20, rest=[30 40 50]
 ```
 
 ---

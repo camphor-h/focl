@@ -3901,6 +3901,33 @@ Focl_Object* FoclObjVecAt(Focl_Vector* objVec, size_t idx)
 {
     return *(Focl_Object**)FoclVectorAtNoCheck(objVec, idx);
 }
+void FoclObjVecSet(Focl_Vector* objVec, size_t idx, Focl_Object* obj, Focl_Context* context)
+{
+    Focl_Object** slot = (Focl_Object**)FoclVectorAtNoCheck(objVec, idx);
+    FoclObjectRelease(*slot, context);
+    FoclObjectRetain(obj);
+    *slot = obj;
+}
+bool FoclObjectsEqual(Focl_Object* a, Focl_Object* b)
+{
+    if (a->type != b->type)
+    {
+        return false;
+    }
+    switch (a->type)
+    {
+        case FOCL_OBJ_TYPE_INT:
+        case FOCL_OBJ_TYPE_BOOL:
+            return (a->as.i == b->as.i);
+        case FOCL_OBJ_TYPE_FLOAT:
+            return (a->as.f == b->as.f);
+        case FOCL_OBJ_TYPE_STR:
+        case FOCL_OBJ_TYPE_ERROR:
+            return (FoclStrCompStr(a->as.data, b->as.data) == 0);
+        default:
+            return (a == b);
+    }
+}
 
 Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* strView)
 {

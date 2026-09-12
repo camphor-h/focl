@@ -1341,6 +1341,244 @@ Focl_Object* buildIn_lappend(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     FoclVectorPushBack(FoclObjectGetVector(lObjName), &srcObj);
     return FoclObjectVoid(context->flatObjPool);
 }
+Focl_Object* buildIn_lrange(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 3)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* lObj;
+    Focl_Object* firstObj;
+    Focl_Object* lastObj;
+    FOCL_OBJ_VEC_AT_AS_LIST_OBJ(objVec, 0, lObj, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 1, firstObj, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 2, lastObj, context->strObjPool, context->strPool);
+    Focl_Obj_Int first = FoclObjectUnboxInt(firstObj);
+    Focl_Obj_Int last = FoclObjectUnboxInt(lastObj);
+    Focl_Vector* src = FoclObjectGetVector(lObj);
+    Focl_Obj_Int count = (Focl_Obj_Int)FoclVectorGetSize(src);
+    if (first < 0) first = 0;
+    if (last >= count) last = count - 1;
+    Focl_Object* retObj = FoclListObjPoolAlloc(context->listObjPool, context->objVecPool);
+    Focl_Vector* dst = FoclObjectGetVector(retObj);
+    for (Focl_Obj_Int i = first; i <= last; i++)
+    {
+        Focl_Object* item = FoclObjVecAt(src, (size_t)i);
+        FoclObjectRetain(item);
+        FoclVectorPushBack(dst, &item);
+    }
+    return retObj;
+}
+Focl_Object* buildIn_lreverse(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 1)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* lObj;
+    FOCL_OBJ_VEC_AT_AS_LIST_OBJ(objVec, 0, lObj, context->strObjPool, context->strPool);
+    Focl_Vector* src = FoclObjectGetVector(lObj);
+    size_t count = FoclVectorGetSize(src);
+    Focl_Object* retObj = FoclListObjPoolAlloc(context->listObjPool, context->objVecPool);
+    Focl_Vector* dst = FoclObjectGetVector(retObj);
+    for (size_t i = count; i > 0; i--)
+    {
+        Focl_Object* item = FoclObjVecAt(src, i - 1);
+        FoclObjectRetain(item);
+        FoclVectorPushBack(dst, &item);
+    }
+    return retObj;
+}
+Focl_Object* buildIn_lsearch(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 2)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* lObj;
+    FOCL_OBJ_VEC_AT_AS_LIST_OBJ(objVec, 0, lObj, context->strObjPool, context->strPool);
+    Focl_Object* target = FoclObjVecAt(objVec, 1);
+    Focl_Vector* src = FoclObjectGetVector(lObj);
+    size_t count = FoclVectorGetSize(src);
+    Focl_Obj_Int found = -1;
+    for (size_t i = 0; i < count; i++)
+    {
+        if (FoclObjectsEqual(FoclObjVecAt(src, i), target))
+        {
+            found = (Focl_Obj_Int)i;
+            break;
+        }
+    }
+    Focl_Object* retObj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
+    FoclObjectBoxInt(retObj, found);
+    return retObj;
+}
+Focl_Object* buildIn_linsert(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    size_t argCount = FoclVectorGetSize(objVec);
+    if (argCount < 2)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* lObj;
+    Focl_Object* iObj;
+    FOCL_OBJ_VEC_AT_AS_LIST_OBJ(objVec, 0, lObj, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 1, iObj, context->strObjPool, context->strPool);
+    Focl_Obj_Int index = FoclObjectUnboxInt(iObj);
+    Focl_Vector* src = FoclObjectGetVector(lObj);
+    Focl_Obj_Int count = (Focl_Obj_Int)FoclVectorGetSize(src);
+    if (index < 0) index = 0;
+    if (index > count) index = count;
+    Focl_Object* retObj = FoclListObjPoolAlloc(context->listObjPool, context->objVecPool);
+    Focl_Vector* dst = FoclObjectGetVector(retObj);
+    for (Focl_Obj_Int i = 0; i < index; i++)
+    {
+        Focl_Object* item = FoclObjVecAt(src, (size_t)i);
+        FoclObjectRetain(item);
+        FoclVectorPushBack(dst, &item);
+    }
+    for (size_t i = 2; i < argCount; i++)
+    {
+        Focl_Object* item = FoclObjVecAt(objVec, i);
+        FoclObjectRetain(item);
+        FoclVectorPushBack(dst, &item);
+    }
+    for (Focl_Obj_Int i = index; i < count; i++)
+    {
+        Focl_Object* item = FoclObjVecAt(src, (size_t)i);
+        FoclObjectRetain(item);
+        FoclVectorPushBack(dst, &item);
+    }
+    return retObj;
+}
+Focl_Object* buildIn_lreplace(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    size_t argCount = FoclVectorGetSize(objVec);
+    if (argCount < 3)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* lObj;
+    Focl_Object* firstObj;
+    Focl_Object* lastObj;
+    FOCL_OBJ_VEC_AT_AS_LIST_OBJ(objVec, 0, lObj, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 1, firstObj, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 2, lastObj, context->strObjPool, context->strPool);
+    Focl_Obj_Int first = FoclObjectUnboxInt(firstObj);
+    Focl_Obj_Int last = FoclObjectUnboxInt(lastObj);
+    Focl_Vector* src = FoclObjectGetVector(lObj);
+    Focl_Obj_Int count = (Focl_Obj_Int)FoclVectorGetSize(src);
+    if (first < 0) first = 0;
+    if (last >= count) last = count - 1;
+    Focl_Object* retObj = FoclListObjPoolAlloc(context->listObjPool, context->objVecPool);
+    Focl_Vector* dst = FoclObjectGetVector(retObj);
+    for (Focl_Obj_Int i = 0; i < first; i++)
+    {
+        Focl_Object* item = FoclObjVecAt(src, (size_t)i);
+        FoclObjectRetain(item);
+        FoclVectorPushBack(dst, &item);
+    }
+    for (size_t i = 3; i < argCount; i++)
+    {
+        Focl_Object* item = FoclObjVecAt(objVec, i);
+        FoclObjectRetain(item);
+        FoclVectorPushBack(dst, &item);
+    }
+    for (Focl_Obj_Int i = last + 1; i < count; i++)
+    {
+        Focl_Object* item = FoclObjVecAt(src, (size_t)i);
+        FoclObjectRetain(item);
+        FoclVectorPushBack(dst, &item);
+    }
+    return retObj;
+}
+Focl_Object* buildIn_lset(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    if (FoclVectorGetSize(objVec) != 3)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* nameObj;
+    Focl_String* name;
+    FOCL_OBJ_VEC_AT_AS_STRING(objVec, 0, nameObj, name, context->strObjPool, context->strPool);
+    Focl_Object* lObj = Focl_FindObject(context->curEnv, context->strPool, name);
+    if (lObj == FOCL_OBJECT_ERROR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+    }
+    if (lObj->type != FOCL_OBJ_TYPE_LIST)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_INVALID_ARG);
+    }
+    Focl_Object* iObj;
+    FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 1, iObj, context->strObjPool, context->strPool);
+    Focl_Obj_Int i = FoclObjectUnboxInt(iObj);
+    Focl_Vector* vec = FoclObjectGetVector(lObj);
+    if (i < 0 || i >= (Focl_Obj_Int)FoclVectorGetSize(vec))
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_INDEX_OOL);
+    }
+    FoclObjVecSet(vec, (size_t)i, FoclObjVecAt(objVec, 2), context);
+    FoclObjectRetain(lObj);
+    return lObj;
+}
+Focl_Object* buildIn_lassign(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+{
+    (void)cmd;
+    size_t argCount = FoclVectorGetSize(objVec);
+    if (argCount < 1)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+    }
+    Focl_Object* lObj;
+    FOCL_OBJ_VEC_AT_AS_LIST_OBJ(objVec, 0, lObj, context->strObjPool, context->strPool);
+    Focl_Vector* src = FoclObjectGetVector(lObj);
+    size_t count = FoclVectorGetSize(src);
+    for (size_t i = 1; i < argCount; i++)
+    {
+        Focl_Object* nameObj;
+        Focl_String* name;
+        FOCL_OBJ_VEC_AT_AS_STRING(objVec, i, nameObj, name, context->strObjPool, context->strPool);
+        Focl_Object* var = Focl_FindObject(context->curEnv, context->strPool, name);
+        if (var == FOCL_OBJECT_ERROR)
+        {
+            return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+        }
+        if (i - 1 < count)
+        {
+            Focl_Object* item = FoclObjVecAt(src, i - 1);
+            if (var->type != item->type)
+            {
+                return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+            }
+            FoclObjectAssign(var, item, context);
+        }
+        else
+        {
+            if (var->type != FOCL_OBJ_TYPE_STR)
+            {
+                return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_WRONG_TYPE_ASSIGNMENT);
+            }
+            FoclStrClear(FoclObjectGetString(var));
+        }
+    }
+    Focl_Object* retObj = FoclListObjPoolAlloc(context->listObjPool, context->objVecPool);
+    Focl_Vector* dst = FoclObjectGetVector(retObj);
+    size_t consumed = (argCount - 1 < count) ? (argCount - 1) : count;
+    for (size_t i = consumed; i < count; i++)
+    {
+        Focl_Object* item = FoclObjVecAt(src, i);
+        FoclObjectRetain(item);
+        FoclVectorPushBack(dst, &item);
+    }
+    return retObj;
+}
 Focl_Object* buildIn_dict(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
@@ -1618,6 +1856,13 @@ void Focl_RegisterUtilsCommand(Focl_Context* context)
     FoclRegisterCommand(context, "llength", buildIn_llength);
     FoclRegisterCommand(context, "lindex", buildIn_lindex);
     FoclRegisterCommand(context, "lappend", buildIn_lappend);
+    FoclRegisterCommand(context, "lrange", buildIn_lrange);
+    FoclRegisterCommand(context, "lreverse", buildIn_lreverse);
+    FoclRegisterCommand(context, "lsearch", buildIn_lsearch);
+    FoclRegisterCommand(context, "linsert", buildIn_linsert);
+    FoclRegisterCommand(context, "lreplace", buildIn_lreplace);
+    FoclRegisterCommand(context, "lset", buildIn_lset);
+    FoclRegisterCommand(context, "lassign", buildIn_lassign);
     FoclRegisterCommand(context, "dict", buildIn_dict);
     FoclRegisterCommand(context, "isint", buildIn_isint);
     FoclRegisterCommand(context, "error", buildIn_error);

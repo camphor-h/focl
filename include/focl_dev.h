@@ -457,6 +457,8 @@ void FoclDictObjPoolFree(Focl_Object* obj, Focl_Context* context);
 
 Focl_Object* Focl_FindObject(Focl_Environment* env, Focl_StringPool* strPool, const Focl_String* target);
 Focl_Object* FoclObjVecAt(Focl_Vector* objVec, size_t idx);
+void FoclObjVecSet(Focl_Vector* objVec, size_t idx, Focl_Object* obj, Focl_Context* context);
+bool FoclObjectsEqual(Focl_Object* a, Focl_Object* b);
 void FoclStringPoolFreeOpDtVoid(void* str, void* strPool);
 Focl_Object* FoclFlatObjPoolAlloc(Focl_FlatObjPool* objPool, Focl_Obj_Type type_);
 Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Obj_Type type_);
