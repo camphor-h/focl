@@ -34,20 +34,20 @@ Focl_Object* sys_name(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
     }
     Focl_Object* sysName = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
 #ifdef _WIN32
-    FoclStrAssign(FoclObjectGetString(sysName), "Windows");
+    FoclStrAssign(FoclObjectGetString(sysName), "Windows", sizeof("Windows") - 1);
 #elif __linux__
-    FoclStrAssign(FoclObjectGetString(sysName), "Linux");
+    FoclStrAssign(FoclObjectGetString(sysName), "Linux", sizeof("Linux") - 1);
 #elif __APPLE__
-    FoclStrAssign(FoclObjectGetString(sysName), "Mac OS");
+    FoclStrAssign(FoclObjectGetString(sysName), "Mac OS", sizeof("Mac OS") - 1);
 #elif __FreeBSD__
-    FoclStrAssign(FoclObjectGetString(sysName), "FreeBSD");
+    FoclStrAssign(FoclObjectGetString(sysName), "FreeBSD", sizeof("FreeBSD") - 1);
 #elif __ANDROID__
-    FoclStrAssign(FoclObjectGetString(sysName), "Android");
+    FoclStrAssign(FoclObjectGetString(sysName), "Android", sizeof("Android") - 1);
 #else
 #ifdef FOCL_CUSTOM_AIM_SYSTEM_NAME
-    FoclStrAssign(FoclObjectGetString(sysName), FOCL_CUSTOM_AIM_SYSTEM_NAME);
+    FoclStrAssign(FoclObjectGetString(sysName), FOCL_CUSTOM_AIM_SYSTEM_NAME, sizeof(FOCL_CUSTOM_AIM_SYSTEM_NAME) - 1);
 #else
-    FoclStrAssign(FoclObjectGetString(sysName), "Unknown");
+    FoclStrAssign(FoclObjectGetString(sysName), "Unknown", sizeof("Unknown") - 1);
 #endif
 #endif
     return sysName;
@@ -260,7 +260,7 @@ Focl_Object* sys_cat(Focl_Context* context, Focl_Vector* objVec, Focl_Command* c
                     buffer[fileSize] = '\0';
                     (void)fread(buffer, sizeof(char), fileSize, fp);
                     retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
-                    FoclStrAssign(FoclObjectGetString(retValue), buffer);
+                    FoclStrAssign(FoclObjectGetString(retValue), buffer, fileSize);
                     Focl_free(buffer);
                     fclose(fp);
                 }
@@ -287,7 +287,7 @@ Focl_Object* sys_edit(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_String* editorName = FoclStringPoolAlloc(context->strPool);
-    FoclStrAssign(editorName, FOCL_EDITOR_VAR_NAME);
+    FoclStrAssign(editorName, FOCL_EDITOR_VAR_NAME, sizeof(FOCL_EDITOR_VAR_NAME) - 1);
     Focl_Object* obj = Focl_FindObject(context->globalEnv, context->strPool, editorName);
     if (obj == FOCL_OBJECT_ERROR)
     {

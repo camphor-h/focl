@@ -579,34 +579,37 @@ Focl_Object* buildIn_typename(Focl_Context* context, Focl_Vector* objVec, Focl_C
     switch (obj->type)
     {
         case FOCL_OBJ_TYPE_INT:
-            FoclStrAssign(retValue->as.data, "Integer");
+            FoclStrAssign(retValue->as.data, "Integer", sizeof("Integer") - 1);
             break;
         case FOCL_OBJ_TYPE_FLOAT:
-            FoclStrAssign(retValue->as.data, "Float");
+            FoclStrAssign(retValue->as.data, "Float", sizeof("Float") - 1);
             break;
         case FOCL_OBJ_TYPE_BOOL:
-            FoclStrAssign(retValue->as.data, "Boolean");
+            FoclStrAssign(retValue->as.data, "Boolean", sizeof("Boolean") - 1);
             break;
         case FOCL_OBJ_TYPE_VOID:
-            FoclStrAssign(retValue->as.data, "Void");
+            FoclStrAssign(retValue->as.data, "Void", sizeof("Void") - 1);
+            break;
+        case FOCL_OBJ_TYPE_C_PTR:
+            FoclStrAssign(retValue->as.data, "C Pointer", sizeof("C Pointer") - 1);
             break;
         case FOCL_OBJ_TYPE_FILE:
-            FoclStrAssign(retValue->as.data, "File");
+            FoclStrAssign(retValue->as.data, "File", sizeof("File") - 1);
             break;
         case FOCL_OBJ_TYPE_STR:
-            FoclStrAssign(retValue->as.data, "String");
+            FoclStrAssign(retValue->as.data, "String", sizeof("String") - 1);
             break;
         case FOCL_OBJ_TYPE_ERROR:
-            FoclStrAssign(retValue->as.data, "Error");
+            FoclStrAssign(retValue->as.data, "Error", sizeof("Error") - 1);
             break;
         case FOCL_OBJ_TYPE_BYTECODE:
-            FoclStrAssign(retValue->as.data, "Focl ByteCode");
+            FoclStrAssign(retValue->as.data, "Focl ByteCode", sizeof("Focl ByteCode") - 1);
             break;
-        case FOCL_OBJ_TYPE_COMPOUND:
-            FoclStrAssign(retValue->as.data, "Compound");
+        case FOCL_OBJ_TYPE_LIST:
+            FoclStrAssign(retValue->as.data, "List", sizeof("List") - 1);
             break;
         default:
-            FoclStrAssign(retValue->as.data, FOCL_ERR_YSNBH);
+            FoclStrAssign(retValue->as.data, FOCL_ERR_YSNBH, sizeof(FOCL_ERR_YSNBH) - 1);
             break;
     }
     
@@ -687,7 +690,8 @@ Focl_Object* buildIn_curtime(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     time(&rawtime);
     timeinfo = localtime(&rawtime);
     Focl_Object* timeObj = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
-    FoclStrAssign(timeObj->as.data, asctime(timeinfo));
+    char* asct = asctime(timeinfo);
+    FoclStrAssign(timeObj->as.data, asct, strlen(asct));
     return timeObj;
 }
 Focl_Object* buildIn_break(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
@@ -783,20 +787,27 @@ Focl_Object* buildIn_asstring(Focl_Context* context, Focl_Vector* objVec, Focl_C
                 Focl_Obj_Int i = FoclObjectUnboxInt(obj);
                 obj->as.data = FoclStringPoolAlloc(context->strPool);
                 sprintf(intToStrBuffer, "%"FOCL_FORMAT_INT, i);
-                FoclStrAssign(obj->as.data, intToStrBuffer);
+                FoclStrAssign(obj->as.data, intToStrBuffer, strlen(intToStrBuffer));
                 break;
             case FOCL_OBJ_TYPE_FLOAT:
                 ; /* label followed by a declaration is a C23 extension. */
                 Focl_Obj_Float f = FoclObjectUnboxFloat(obj);
                 obj->as.data = FoclStringPoolAlloc(context->strPool);
                 sprintf(floatToStrBuffer, "%"FOCL_FORMAT_FLOAT, f);
-                FoclStrAssign(obj->as.data, floatToStrBuffer);
+                FoclStrAssign(obj->as.data, floatToStrBuffer, strlen(floatToStrBuffer));
                 break;
             case FOCL_OBJ_TYPE_BOOL:
                 ; /* label followed by a declaration is a C23 extension. */
                 Focl_Obj_Bool b = obj->as.i;
                 obj->as.data = FoclStringPoolAlloc(context->strPool);
-                FoclStrAssign(obj->as.data, (b == FOCL_OBJ_TRUE) ? "true" : "false");
+                if (b == FOCL_OBJ_TRUE)
+                {
+                    FoclStrAssign(obj->as.data, "true", sizeof("true") - 1);
+                }
+                else
+                {
+                    FoclStrAssign(obj->as.data, "false", sizeof("false") - 1);
+                }
                 break;
         }
         obj->type = FOCL_OBJ_TYPE_STR;
@@ -1120,7 +1131,7 @@ Focl_Object* buildIn_string(Focl_Context* context, Focl_Vector* objVec, Focl_Com
         int32_t tmpChar = FoclStrAt(idx, &start, &searchStartIdx);
         memcpy(tmpBuffer, &tmpChar, sizeof(int32_t));
         /* may not support big endian? */
-        FoclStrAssign(FoclObjectGetString(retValue), tmpBuffer);
+        FoclStrAssign(FoclObjectGetString(retValue), tmpBuffer, strlen(tmpBuffer));
     }
     else if (FoclStrComp(FoclObjectGetString(childCmdObj), "range") == 0)
     {
@@ -1161,7 +1172,7 @@ Focl_Object* buildIn_string(Focl_Context* context, Focl_Vector* objVec, Focl_Com
         memcpy(tmpBuf, startPtr, byteLen);
         tmpBuf[byteLen] = '\0';
         retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
-        FoclStrAssign(FoclObjectGetString(retValue), tmpBuf);
+        FoclStrAssign(FoclObjectGetString(retValue), tmpBuf, strlen(tmpBuf));
         Focl_free(tmpBuf);
     }
     else if (FoclStrComp(FoclObjectGetString(childCmdObj), "compare") == 0)
@@ -1235,9 +1246,9 @@ Focl_Object* buildIn_namespace(Focl_Context* context, Focl_Vector* objVec, Focl_
     if (FoclStrComp(FoclObjectGetString(childCmdObj), "import") == 0)
     {
         Focl_String* nsToImport = FoclStringPoolAlloc(context->strPool);
-        FoclStrAssign(nsToImport, "::");
+        FoclStrAssign(nsToImport, "::", sizeof("::") - 1);
         FoclStrAppendStr(nsToImport, FoclObjectGetString(targetObj));
-        FoclStrAppend(nsToImport, "::");
+        FoclStrAppend(nsToImport, "::", sizeof("::") - 1);
         FoclVectorPushBack(context->curEnv->namespaceVec, &nsToImport);
         retValue = FoclObjectVoid(context->flatObjPool);
     }
@@ -1250,7 +1261,7 @@ Focl_Object* buildIn_namespace(Focl_Context* context, Focl_Vector* objVec, Focl_
 Focl_Object* buildIn_list(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
-    Focl_Object* lObj = FoclCmpdObjPoolAlloc(context->cmpdObjPool, context->objVecPool);
+    Focl_Object* lObj = FoclListObjPoolAlloc(context->listObjPool, context->objVecPool);
     Focl_Vector* lVec = FoclObjectGetVector(lObj);
     size_t argCount = FoclVectorGetSize(objVec);
     for (size_t i = 0; i < argCount; i++)
@@ -1269,7 +1280,7 @@ Focl_Object* buildIn_llength(Focl_Context* context, Focl_Vector* objVec, Focl_Co
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
     Focl_Object* lObj;
-    FOCL_OBJ_VEC_AT_AS_COMPOUND_OBJ(objVec, 0, lObj, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_LIST_OBJ(objVec, 0, lObj, context->strObjPool, context->strPool);
     Focl_Object* lenObj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
     FoclObjectBoxInt(lenObj, FoclVectorGetSize(FoclObjectGetVector(lObj)));
     return lenObj;
@@ -1283,7 +1294,7 @@ Focl_Object* buildIn_lindex(Focl_Context* context, Focl_Vector* objVec, Focl_Com
     }
     Focl_Object* lObj;
     Focl_Object* iObj;
-    FOCL_OBJ_VEC_AT_AS_COMPOUND_OBJ(objVec, 0, lObj, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_LIST_OBJ(objVec, 0, lObj, context->strObjPool, context->strPool);
     FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 1, iObj, context->strObjPool, context->strPool);
     Focl_Obj_Int i = FoclObjectUnboxInt(iObj);
     if (i < 0)
@@ -1308,12 +1319,22 @@ Focl_Object* buildIn_lappend(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    Focl_Object* lObj;
+    Focl_Object* lObjName;
+    Focl_String* lName;
     Focl_Object* srcObj;
-    FOCL_OBJ_VEC_AT_AS_COMPOUND_OBJ(objVec, 0, lObj, context->strObjPool, context->strPool);
+    FOCL_OBJ_VEC_AT_AS_STRING(objVec, 0, lObjName, lName, context->strObjPool, context->strPool);
+    Focl_Object* dstObj = Focl_FindObject(context->curEnv, context->strPool, lName);
+    if (dstObj == FOCL_OBJECT_ERROR)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+    }
+    if (dstObj->type != FOCL_OBJ_TYPE_LIST)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_INVALID_ARG);
+    }
     FOCL_OBJ_VEC_AT_NOT_ERR(objVec, 1, srcObj, context->strObjPool, context->strPool);
     FoclObjectRetain(srcObj);
-    FoclVectorPushBack(FoclObjectGetVector(lObj), &srcObj);
+    FoclVectorPushBack(FoclObjectGetVector(lObjName), &srcObj);
     return FoclObjectVoid(context->flatObjPool);
 }
 

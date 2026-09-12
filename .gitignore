@@ -9,3 +9,6 @@ local.mk
 gmon.out
 analysis.txt
 test.txt
+
+# here are my own focl libs
+nck.c

@@ -35,13 +35,13 @@ int Focl_REPL(Focl_Context* ctx)
         {
             for (int d = depth; d > 0; d--)
             {
-                FoclStrAppend(prompt, ".");
+                FoclStrAppend(prompt, ".", sizeof(".") - 1);
             }
-            FoclStrAppend(prompt, " ");
+            FoclStrAppend(prompt, " ", sizeof(" ") - 1);
         }
         else
         {
-            FoclStrAppend(prompt, "> ");
+            FoclStrAppend(prompt, "> ", sizeof("> ") - 1);
         }
 
         size_t lineLen = 0;
@@ -68,9 +68,9 @@ int Focl_REPL(Focl_Context* ctx)
         }
         if (buffer->length > 0)
         {
-            FoclStrAppend(buffer, "\n");
+            FoclStrAppend(buffer, "\n", sizeof("\n") - 1);
         }
-        FoclStrAppend(buffer, input);
+        FoclStrAppend(buffer, input, lineLen);
         depth += focl_countBraceDepth(input);
         if (depth < 0)
         {

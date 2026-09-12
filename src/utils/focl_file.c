@@ -120,7 +120,7 @@ Focl_Object* file_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
         }
         char* dirCStr = Focl_dirname(FoclStrCStr(FoclObjectGetString(targetObj)));
         retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
-        FoclStrAssign(FoclObjectGetString(retValue), dirCStr);
+        FoclStrAssign(FoclObjectGetString(retValue), dirCStr, sizeof(dirCStr));
         Focl_free(dirCStr);
     }
     else if (FoclStrComp(FoclObjectGetString(childCmdObj), "realpath") == 0)
@@ -137,7 +137,7 @@ Focl_Object* file_file(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
         char buffer[PATH_MAX];
         Focl_realpath(FoclStrCStr(FoclObjectGetString(targetObj)), buffer, PATH_MAX);
         retValue = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
-        FoclStrAssign(FoclObjectGetString(retValue), buffer);
+        FoclStrAssign(FoclObjectGetString(retValue), buffer, strlen(buffer));
     }
     else
     {
