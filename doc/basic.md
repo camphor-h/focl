@@ -9,6 +9,7 @@
 - [Math & Random](#math--random)
 - [String Operations](#string-operations)
 - [List Operations](#list-operations)
+- [Dict Operations](#dict-operations)
 - [Filesystem Operations](#filesystem-operations)
 - [Procedure Definitions](#procedure-definitions)
 - [System & Utilities](#system--utilities)
@@ -20,15 +21,36 @@
 
 | Command | Syntax | Description |
 |---------|--------|-------------|
-| `puts` | `puts "text"` | Print text with newline |
-| | `puts -nonewline "text"` | Print text without newline |
-| `gets` | `gets stdin var` | Read one line from stdin into variable |
+| `puts` | `puts value` | Print value to stdout with newline |
+| | `puts -nonewline value` | Print value to stdout without newline |
+| | `puts $file value` | Write value to a file handle with newline |
+| | `puts -nonewline $file value` | Write value to a file handle without newline |
+| `gets` | `gets stdin` | Read one line from stdin, return it as a string |
+| | `gets $file` | Read one line from a file handle, return it |
+| | `gets stdin var` | Read one line from stdin into `var` |
+| | `gets $file var` | Read one line from a file handle into `var` |
+| `scan` | `scan stdin` | Read one line from stdin and parse it (int/float/string) |
+| | `scan $file` | Read one line from a file handle and parse it |
+| | `scan stdin var` | Read from stdin and assign the parsed value to `var` |
+| | `scan $file var` | Read from a file handle and assign the parsed value to `var` |
+| `open` | `open path mode` | Open a file, return a file handle (fopen modes) |
+| `close` | `close handle` | Close a file handle |
 
 **Examples:**
 ```
 puts "Hello, World!"
 puts -nonewline "Enter name: "
 gets stdin name
+
+set f [open "data.txt" w]
+puts $f "line one"
+puts -nonewline $f "no newline"
+close $f
+
+set g [open "data.txt" r]
+set line [gets $g]      ; read one line
+scan $g n               ; parse next line into n
+close $g
 ```
 
 ---
@@ -105,9 +127,11 @@ for {set i 0} {i < 5} {incr i} {
 - `Boolean` — `true` or `false`
 - `String` — UTF-8 encoded string
 - `Void` — No value
-- `Compound` — List/vector type
+- `List` — Ordered sequence of values
+- `Dict` — Key/value map
 - `ByteCode` — Compiled Focl code
 - `Error` — Error object
+- C Pointer — Opaque native handle; `typename` returns its registered name (e.g. file handles report `FILE`)
 
 **Examples:**
 ```
@@ -117,6 +141,9 @@ typeid x          ; returns type ID (integer)
 
 set y 3.14
 typename y        ; returns "Float"
+
+set f [open "a.txt" w]
+typename f        ; returns "FILE"
 ```
 
 ---
@@ -205,7 +232,7 @@ append msg " World!"  ; msg becomes "Hello World!"
 
 | Command | Syntax | Description |
 |---------|--------|-------------|
-| `list` | `list [elem1] [elem2] ...` | Create a new list/compound |
+| `list` | `list [elem1] [elem2] ...` | Create a new list |
 | `llength` | `llength list` | Get list length |
 | `lindex` | `lindex list index` | Get element at index |
 | `lappend` | `lappend list value` | Append value to list |
@@ -216,6 +243,36 @@ set mylist [list 10 20 30 40]
 llength $mylist        ; returns 4
 lindex $mylist 2       ; returns 30
 lappend mylist 50      ; list becomes [10 20 30 40 50]
+```
+
+---
+
+## Dict Operations
+
+| Command | Syntax | Description |
+|---------|--------|-------------|
+| `dict` | `dict create [key value ...]` | Create a new dict from key/value pairs |
+| | `dict set dictVar key value` | Set `key` to `value` in the dict variable |
+| | `dict get dict key` | Get the value for `key` |
+| | `dict exists dict key` | Check whether `key` exists (boolean) |
+| | `dict keys dict` | Get a list of all keys |
+| | `dict values dict` | Get a list of all values |
+| | `dict size dict` | Get the number of entries |
+| | `dict unset dictVar key` | Remove `key` from the dict variable |
+
+Keys are converted to strings; `dict set`/`dict unset` modify the named variable in place.
+
+**Examples:**
+```
+set d [dict create a 1 b 2 c 3]
+dict size $d            ; returns 3
+dict get $d b           ; returns 2
+dict exists $d a        ; returns true
+
+dict set d e 5          ; d now has a=1 b=2 c=3 e=5
+dict keys $d            ; e.g. [c e a b]
+dict values $d          ; e.g. [3 5 1 2]
+dict unset d a          ; remove key "a"
 ```
 
 ---
@@ -242,7 +299,7 @@ lappend mylist 50      ; list becomes [10 20 30 40 50]
 **Examples:**
 ```
 file exists "/tmp/test.txt"   ; returns true/false
-file isfile "myfile.txt"       ; returns true if normal file
+file isfile "myfile.txt"      ; returns true if normal file
 file mkdir "mydir"
 sys::cp "src.txt" "destdir/"
 sys::rm -r "old_folder/"
@@ -282,8 +339,11 @@ set result [add 5 3]    ; result = 8
 |---------|--------|-------------|
 | `eval` | `eval "code"` | Execute code string |
 | `expr` | `expr "1 + 2 * 3"` | Evaluate arithmetic expression |
-| `exec` | `exec "command"` | Run system command |
+| `source` | `source path` | Execute a Focl source file |
+| `error` | `error "message"` | Raise an error with the given message |
+| `sys::exec` | `sys::exec "command"` | Run a system command |
 | `sys::name` | `sys::name` | Get OS name (Windows/Linux/Mac OS/FreeBSD/Android) |
+| `sys::sleepms` | `sys::sleepms n` | Sleep for n milliseconds |
 | `curtime` | `curtime` | Get current time string |
 | `exit` | `exit` | Exit with code 0 |
 | | `exit n` | Exit with code n |
@@ -295,7 +355,10 @@ set result [add 5 3]    ; result = 8
 sys::name          ; returns "Linux" or "Windows", etc.
 eval "puts Hello"
 expr "2 + 3 * 4"   ; returns 14
-exec "ls -la"
+source "lib.focl"
+sys::exec "ls -la"
+sys::sleepms 500
+error "something went wrong"
 exit 0
 ```
 
@@ -306,11 +369,17 @@ exit 0
 | Command | Syntax | Description |
 |---------|--------|-------------|
 | `term::clear` | `term::clear` | Clear terminal screen |
-| `term::gotoxy` | `term::gotoxy x y` | Move cursor to (x, y) position |
+| `term::gotoxy` | `term::gotoxy col row` | Move cursor to column `col`, row `row` (both ≥ 1) |
 | `term::getw` | `term::getw` | Get terminal width in columns |
 | `term::geth` | `term::geth` | Get terminal height in rows |
 | `term::hidecursor` | `term::hidecursor` | Hide terminal cursor |
 | `term::showcursor` | `term::showcursor` | Show terminal cursor |
+| `term::color` | `term::color list` | List all available color names |
+| | `term::color name` | Set the output color (see names below) |
+| | `term::color clear` | Reset colors back to default |
+| `term::stringwidth` | `term::stringwidth s` | Get the display width of a string |
+
+**Color names:** `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, `lightblack`, `lightred`, `lightgreen`, `lightyellow`, `lightblue`, `lightmagenta`, `lightcyan`, `lightwhite`, plus `reverse` / `noreverse` for inverse video.
 
 **Examples:**
 ```
@@ -319,4 +388,10 @@ term::gotoxy 10 5    ; move cursor to column 10, row 5
 set cols [term::getw]
 set rows [term::geth]
 puts "Terminal size: ${cols}x${rows}"
+
+term::color red
+puts "this is red"
+term::color reverse
+puts "this is reversed"
+term::color clear
 ```

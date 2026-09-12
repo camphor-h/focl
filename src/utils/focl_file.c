@@ -163,7 +163,7 @@ Focl_Object* file_open(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
     Focl_Object* modeObj;
     Focl_String* mode;
     FOCL_OBJ_VEC_AT_AS_STRING(objVec, 1, modeObj, mode, context->strObjPool, context->strPool);
-    Focl_Object* fObj = FoclFileObjAlloc(context->flatObjPool, FoclStrCStr(realPath), FoclStrCStr(mode));
+    Focl_Object* fObj = FoclFileObjAlloc(context, FoclStrCStr(realPath), FoclStrCStr(mode));
     if (fObj == FOCL_OBJECT_ERROR)
     {
         FoclStringPoolFree(realPath, context->strPool);
@@ -181,8 +181,11 @@ Focl_Object* file_close(Focl_Context* context, Focl_Vector* objVec, Focl_Command
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
     }
-    Focl_Object* fObj;
-    FOCL_OBJ_VEC_AT_AS_OBJ(objVec, 0, fObj, FOCL_OBJ_TYPE_FILE, context->strObjPool, context->strPool);
+    Focl_Object* fObj = FoclObjVecAt(objVec, 0);
+    if (!FoclObjectIsFile(context, fObj))
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_INVALID_ARG);
+    }
     FoclObjectRelease(fObj, context);
     return FoclObjectVoid(context->flatObjPool);
 }

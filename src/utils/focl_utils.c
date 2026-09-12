@@ -35,10 +35,10 @@ Focl_Object* buildIn_puts(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
                 return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
             }
         }
-        else if (optionObj->type == FOCL_OBJ_TYPE_FILE)
+        else if (FoclObjectIsFile(context, optionObj))
         {
-            FoclObjectPrint(FoclObjVecAt(objVec, 1), optionObj->as.ptr, context->strPool);
-            FoclIOBufferPutChar(optionObj->as.ptr, '\n');
+            FoclObjectPrint(FoclObjVecAt(objVec, 1), FoclObjectGetPtr(optionObj), context->strPool);
+            FoclIOBufferPutChar(FoclObjectGetPtr(optionObj), '\n');
         }
         else
         {
@@ -53,12 +53,12 @@ Focl_Object* buildIn_puts(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
         {
             return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
         }
-        if (fileObj->type != FOCL_OBJ_TYPE_FILE)
+        if (!FoclObjectIsFile(context, fileObj))
         {
             return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_ARG);
         }
-        FoclObjectPrint(FoclObjVecAt(objVec, 2), fileObj->as.ptr, context->strPool);
-        FoclIOBufferFlushOut(fileObj->as.ptr);
+        FoclObjectPrint(FoclObjVecAt(objVec, 2), FoclObjectGetPtr(fileObj), context->strPool);
+        FoclIOBufferFlushOut(FoclObjectGetPtr(fileObj));
     }
     else
     {
@@ -85,9 +85,9 @@ Focl_Object* buildIn_gets(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
         }
         fp = stdin;
     }
-    else if (inObj->type == FOCL_OBJ_TYPE_FILE)
+    else if (FoclObjectIsFile(context, inObj))
     {
-        fp = ((Focl_IOBuffer*)inObj->as.ptr)->fPtr;
+        fp = ((Focl_IOBuffer*)FoclObjectGetPtr(inObj))->fPtr;
     }
     else
     {
@@ -142,9 +142,9 @@ Focl_Object* buildIn_scan(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
         }
         fp = stdin;
     }
-    else if (inObj->type == FOCL_OBJ_TYPE_FILE)
+    else if (FoclObjectIsFile(context, inObj))
     {
-        fp = ((Focl_IOBuffer*)inObj->as.ptr)->fPtr;
+        fp = ((Focl_IOBuffer*)FoclObjectGetPtr(inObj))->fPtr;
     }
     else
     {
@@ -335,7 +335,7 @@ Focl_Object* buildIn_if(Focl_Context* context, Focl_Vector* objVec, Focl_Command
         Focl_String* condBlockStr;
         Focl_StringView condBlock;
         FOCL_OBJ_VEC_AT_AS_STRING_VIEW(objVec, i, condBlockObj, condBlockStr, condBlock, context->strObjPool, context->strPool);
-        if (condBlock.len <= 2)
+        if (condBlock.len == 0)
         {
             return FoclObjectError(context->strObjPool, context->strPool, FOCl_ERR_INVALID_BLOCK);
         }
@@ -375,7 +375,7 @@ Focl_Object* buildIn_if(Focl_Context* context, Focl_Vector* objVec, Focl_Command
             {
                 return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_NO_EXEC_BLOCK);
             }
-            i += 2;
+            i += 3;
         }
         else if (FoclStringViewComp(&next, "else") == 0)
         {
@@ -408,7 +408,7 @@ Focl_Object* buildIn_while(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     Focl_String* condBlockStr;
     Focl_StringView condBlock;
     FOCL_OBJ_VEC_AT_AS_STRING_VIEW(objVec, 0, condBlockObj, condBlockStr, condBlock, context->strObjPool, context->strPool);
-    if (condBlock.len <= 2)
+    if (condBlock.len == 0)
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCl_ERR_INVALID_BLOCK);
     }
@@ -494,7 +494,7 @@ Focl_Object* buildIn_for(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
     Focl_String* condBlockStr;
     Focl_StringView condBlock;
     FOCL_OBJ_VEC_AT_AS_STRING_VIEW(objVec, 1, condBlockObj, condBlockStr, condBlock, context->strObjPool, context->strPool);
-    if (condBlock.len <= 2)
+    if (condBlock.len == 0)
     {
         return FoclObjectError(context->strObjPool, context->strPool, FOCl_ERR_INVALID_BLOCK);
     }
@@ -591,11 +591,11 @@ Focl_Object* buildIn_typename(Focl_Context* context, Focl_Vector* objVec, Focl_C
             FoclStrAssign(retValue->as.data, "Void", sizeof("Void") - 1);
             break;
         case FOCL_OBJ_TYPE_C_PTR:
-            FoclStrAssign(retValue->as.data, "C Pointer", sizeof("C Pointer") - 1);
+        {
+            Focl_CPtrType* type = FoclCPtrTypeAt(context, obj->as.cptr->idx);
+            FoclStrAssignStr(retValue->as.data, type->name);
             break;
-        case FOCL_OBJ_TYPE_FILE:
-            FoclStrAssign(retValue->as.data, "File", sizeof("File") - 1);
-            break;
+        }
         case FOCL_OBJ_TYPE_STR:
             FoclStrAssign(retValue->as.data, "String", sizeof("String") - 1);
             break;
@@ -667,7 +667,11 @@ Focl_Object* buildIn_expr(Focl_Context* context, Focl_Vector* objVec, Focl_Comma
     parser.pos = sv.strPtr;
     parser.end = sv.strPtr + sv.len;
     Focl_Object* result = exprParseExpression(&parser);
-    if (result != NULL && result->type != FOCL_OBJ_TYPE_ERROR)
+    if (result == NULL)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, "Invalid or empty expression");
+    }
+    if (result->type != FOCL_OBJ_TYPE_ERROR)
     {
         exprSkipSpace(&parser);
         if (parser.pos < parser.end)

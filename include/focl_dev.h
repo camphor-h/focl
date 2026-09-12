@@ -250,23 +250,22 @@ typedef Focl_HashTable Focl_CommandTable;
 
 typedef Focl_HashTable Focl_Dict;
 
+typedef struct Focl_CPtr
+{
+    Focl_Obj_RefCount refCount;
+    size_t idx;      /* index into cptrVec (the type registry) */
+    void* ptr;       /* the raw C resource */
+}Focl_CPtr;
+
 typedef struct Focl_CPtrType
 {
     Focl_String* name;
-    void (*ctfunc)(void* ptr, void* ctx);
-    void (*dtfunc)(void* ptr, void* ctx);
+    void (*ctfunc)(Focl_CPtr* handle, void* ctx); /* construct: write handle->ptr */
+    void (*dtfunc)(void* ptr, void* ctx);         /* destruct: free ptr */
 }Focl_CPtrType;
-
-typedef struct Focl_CPtr
-{
-    size_t idx;
-    void* ptr;
-}Focl_CPtr;
 
 typedef Focl_Vector Focl_CPtrTypeVec;
 #define FOCL_CPTR_VECTOR_INIT_CAPACITY 8
-
-size_t Focl_RegisterCPtr(char* name, void (*ctfunc_)(void* ptr, void* ctx), void (*dtfunc_)(void* ptr, void* ctx), Focl_Context* ctx); /* return the id of C Ptr */
 
 typedef Focl_Pool Focl_CPtrPool;
 #define FOCL_CPTR_POOL_ITEM_PER_BLOCK 8
@@ -336,6 +335,7 @@ typedef struct Focl_Context
     Focl_DictObjPool* dictObjPool;
     Focl_CPtrTypeVec* cptrVec;
     Focl_CPtrPool* cptrPool;
+    size_t fileCPtrTypeId;
     Focl_EnvPool* envPool;
     Focl_IOBuffer* outBuffer; /* currently only have output buffer */
     Focl_Environment* globalEnv;
@@ -378,12 +378,11 @@ typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* obj
 #define FOCL_OBJ_TYPE_BOOL 2
 #define FOCL_OBJ_TYPE_VOID 3
 #define FOCL_OBJ_TYPE_C_PTR 4
-#define FOCL_OBJ_TYPE_FILE 5
-#define FOCL_OBJ_TYPE_ERROR 6
-#define FOCL_OBJ_TYPE_BYTECODE 7
-#define FOCL_OBJ_TYPE_STR 8
-#define FOCL_OBJ_TYPE_LIST 9
-#define FOCL_OBJ_TYPE_DICT 10
+#define FOCL_OBJ_TYPE_ERROR 5
+#define FOCL_OBJ_TYPE_BYTECODE 6
+#define FOCL_OBJ_TYPE_STR 7
+#define FOCL_OBJ_TYPE_LIST 8
+#define FOCL_OBJ_TYPE_DICT 9
 
 #define FOCL_ERR_INVALID_ARG "Invalid argument"
 #define FOCL_ERR_UNSUPPORTED_ARG_COUNT "Unsupported argument counts"
@@ -437,6 +436,16 @@ void FoclObjectRetain(Focl_Object* obj);
 void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);
 void FoclObjectReleaseOpDtVoid(void* obj, void* ctx);
 
+size_t Focl_RegisterCPtr(const char* name, void (*ctfunc)(Focl_CPtr* handle, void* ctx), void (*dtfunc)(void* ptr, void* ctx), Focl_Context* context);
+Focl_CPtr* FoclCPtrHandleAlloc(Focl_Context* context, size_t typeId);
+void FoclCPtrHandleRetain(Focl_CPtr* handle);
+void FoclCPtrHandleRelease(Focl_CPtr* handle, Focl_Context* context);
+Focl_Object* FoclCPtrObjAlloc(Focl_Context* context, size_t typeId);
+Focl_CPtr* FoclObjectGetCPtr(Focl_Object* obj);
+Focl_CPtrType* FoclCPtrTypeAt(Focl_Context* context, size_t idx);
+size_t FoclFindCPtrType(Focl_Context* context, const Focl_String* name);
+bool FoclObjectIsFile(Focl_Context* context, Focl_Object* obj);
+
 Focl_String* FoclObjectStringize(Focl_Object* obj, Focl_StringPool* strPool); /* free the return string! */
 Focl_String* FoclListObjStringize(Focl_Object* listObj, Focl_StringPool* strPool); /* free the return string! */
 Focl_String* FoclDictObjStringize(Focl_Object* dictObj, Focl_StringPool* strPool); /* free the return string! */
@@ -452,8 +461,7 @@ void FoclStringPoolFreeOpDtVoid(void* str, void* strPool);
 Focl_Object* FoclFlatObjPoolAlloc(Focl_FlatObjPool* objPool, Focl_Obj_Type type_);
 Focl_Object* FoclStringObjPoolAlloc(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Obj_Type type_);
 Focl_Object* FoclListObjPoolAlloc(Focl_ListObjPool* listObjPool, Focl_VectorPool* objVecPool);
-Focl_Object* FoclPtrObjAlloc(Focl_FlatObjPool* objPool, void* ptr, Focl_Obj_Type type);
-Focl_Object* FoclFileObjAlloc(Focl_FlatObjPool* objPool, const char* filePath, char* mode); /* will return null if cannot open file */
+Focl_Object* FoclFileObjAlloc(Focl_Context* context, const char* filePath, const char* mode); /* will return null if cannot open file */
 Focl_Object* FoclObjPoolAllocAssign(Focl_Context* context, Focl_Object* src);
 Focl_Object* FoclObjectCopy(Focl_Context* context, Focl_Object* src);
 
