@@ -1,0 +1,5 @@
+proc f {} {
+    exit 5
+}
+f
+puts "not reached"

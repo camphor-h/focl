@@ -84,9 +84,12 @@ install: release
 	@sudo install -m644 $(LIBRARY) "/usr/local/lib/focl/"
 	@echo "Installation complete"
 
+test: $(BUILD_DIR)/$(TARGET)
+	@sh test/run_tests.sh
+
 clean:
 	rm -rf $(BUILD_DIR) $(TARGET) $(TARGET_C) $(LIBRARY)
 
 -include $(OBJ_DIR)/*.d
 
-.PHONY: release debug clean install
+.PHONY: release debug test clean install

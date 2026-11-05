@@ -1,6 +1,7 @@
 build/
 *.focl
 !example/*.focl
+!test/control/*.focl
 *.exe
 focl
 foclc
@@ -10,6 +11,10 @@ gmon.out
 analysis.txt
 hello.txt
 test.txt
+
+AGENTS.md
+
+.vscode/
 
 # here are my own focl libs
 nck.c

@@ -1,0 +1,12 @@
+set sum 0
+set i 0
+while {$i < 3} {
+    set j 0
+    while {$j < 3} {
+        incr j
+        if {$j == 2} { continue }
+        incr sum
+    }
+    incr i
+}
+puts "sum=$sum"

@@ -1,0 +1,6 @@
+set i 0
+while {$i < 5} {
+    if {$i == 2} { exit 7 }
+    incr i
+}
+puts "not reached"

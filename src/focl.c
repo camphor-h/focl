@@ -16,6 +16,12 @@
  * let the modern language with optional pointer user laugh on us anymore.
  */
 
+char* Focl_GetVersionStr(void)
+{
+    static char version[] = FOCL_VERSION;
+    return version;
+}
+
 #if SIZE_MAX == 0xFFFFFFFFFFFFFFFF
     Focl_Obj_Int Focl_StrToInt(const char* str)
     {
@@ -48,9 +54,9 @@ void FoclPoolFree(void* obj, Focl_Pool* pool);
 void freeFoclIOBufferVoid(void* ioBuffer);
 void FoclCPtrFileDt(void* ptr, void* ctx);
 
-void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_StringView* src);
+Focl_Result FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_StringView* src);
 
-Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView);
+Focl_Result Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView);
 
 #ifdef MEMORY_ALLOC_CHECK
 #if defined(__GLIBC__) && (__GLIBC__ >= 2)
@@ -1867,7 +1873,7 @@ Focl_Object* FoclObjectError(Focl_StrObjPool* strObjPool, Focl_StringPool* strPo
     FoclStrAssign(FoclObjectGetString(obj), errmsg, strlen(errmsg));
     return obj;
 }
-Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_StringView* strView)
+Focl_Result getFoclObjectWithStringView(Focl_Context* context, const Focl_StringView* strView)
 {
     Focl_Object* obj;
     Focl_StringPool* strPool = context->strPool;
@@ -1886,7 +1892,12 @@ Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_Strin
     else if (Focl_isString_View(strView))
     {
         obj = FoclStringObjPoolAlloc(strObjPool, strPool, FOCL_OBJ_TYPE_STR);
-        FoclStrExpansion(context, obj->as.data, strView);
+        Focl_Result expansion = FoclStrExpansion(context, obj->as.data, strView);
+        if (expansion.flow != FOCL_FLOW_OK)
+        {
+            FoclObjectRelease(obj, context);
+            return expansion;
+        }
     }
     else if (Focl_isVarSubstition_View(strView))
     {
@@ -1897,7 +1908,7 @@ Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_Strin
         restoreFoclStringViewFromTempString(&varStrView, saved);
         if (obj == FOCL_OBJECT_ERROR)
         {
-            return FoclObjectError(strObjPool, strPool, FOCL_ERR_CANNOT_FIND_OBJECT);
+            return FoclResultError(FoclObjectError(strObjPool, strPool, FOCL_ERR_CANNOT_FIND_OBJECT));
         }
         FoclObjectRetain(obj);
     }
@@ -1917,7 +1928,7 @@ Focl_Object* getFoclObjectWithStringView(Focl_Context* context, const Focl_Strin
         obj = FoclStringObjPoolAlloc(strObjPool, strPool, FOCL_OBJ_TYPE_STR);
         FoclStrAssignView(obj->as.data, strView);
     }
-    return obj;
+    return FoclResultOk(obj);
 }
 Focl_Object* FoclObjectVoid(Focl_FlatObjPool* flatObjPool)
 {
@@ -1946,6 +1957,14 @@ void FoclObjectRetain(Focl_Object* obj)
     if (obj != NULL)
     {
         obj->refCount++;
+    }
+}
+void FoclResultRelease(Focl_Result* result, Focl_Context* context)
+{
+    if (result->value != NULL)
+    {
+        FoclObjectRelease(result->value, context);
+        result->value = NULL;
     }
 }
 void FoclObjectRelease(Focl_Object* obj, Focl_Context* context)
@@ -2499,6 +2518,7 @@ Focl_Command* createFoclCommandBuildIn(Focl_CommandFunc cmdFunc, Focl_StringPool
     FoclStrAssign(cmd->name, cmdName, strlen(cmdName));
     cmd->proc = NULL;
     cmd->args = NULL;
+    cmd->chunk = NULL;
     return cmd;
 }
 Focl_Command* createFoclCommand(Focl_StringPool* strPool, Focl_String* cmdName, Focl_StringView* argsView, Focl_StringView* procView)
@@ -2511,6 +2531,7 @@ Focl_Command* createFoclCommand(Focl_StringPool* strPool, Focl_String* cmdName, 
     FoclStrAssignView(cmd->proc, procView);
     cmd->args = FoclStringPoolAlloc(strPool);
     FoclStrAssignView(cmd->args, argsView);
+    cmd->chunk = NULL;
     return cmd;
 }
 void freeFoclCommand(Focl_Command* cmd, Focl_StringPool* strPool)
@@ -2523,6 +2544,7 @@ void freeFoclCommand(Focl_Command* cmd, Focl_StringPool* strPool)
     {
         FoclStringPoolFree(cmd->args, strPool);
     }
+    Focl_ChunkFree(cmd->chunk);
     Focl_free(cmd);
 }
 void FoclCommandOpDt(Focl_Command* cmd, Focl_StringPool* strPool)
@@ -2536,6 +2558,7 @@ void FoclCommandOpDt(Focl_Command* cmd, Focl_StringPool* strPool)
     {
         FoclStringPoolFree(cmd->args, strPool);
     }
+    Focl_ChunkFree(cmd->chunk);
     Focl_free(cmd); /* if the Focl_Command was poolize! delete this!!!!! */
 }
 void FoclCommandOpDtVoid(void* cmd_, void* strPoolCtx)
@@ -2768,12 +2791,6 @@ Focl_Context* createFoclContext(FILE* outpotfPtr, int argc, char** argv)
     context->outBuffer = createFoclIOBuffer(outpotfPtr, FOCL_IOBUFFER_STDOUT_DEFAULT_SIZE);
     context->globalEnv = FoclEnvPoolAlloc(context->envPool, NULL, context, NULL);
     context->curEnv = context->globalEnv;
-    context->exitCode = 0;
-    context->hasBreakBuf = false;
-    context->hasContinueBuf = false;
-    context->hasExitBuf = false;
-    context->hasReturnBuf = false;
-    context->returnValue = NULL;
     Focl_ctxInitArgs(context, argc, argv);
     return context;
 }
@@ -3008,6 +3025,10 @@ Focl_Object* exprParseVariable(Focl_ExprParser* p)
 
 Focl_Object* exprParsePrimary(Focl_ExprParser* p)
 {
+    if (p->flow != FOCL_FLOW_OK)
+    {
+        return NULL;
+    }
     exprSkipSpace(p);
     if (p->pos >= p->end) return NULL;
     if (*p->pos == '(')
@@ -3057,9 +3078,16 @@ Focl_Object* exprParsePrimary(Focl_ExprParser* p)
             return FoclObjectError(p->context->strObjPool, p->context->strPool, "Unclosed '[' in expression");
         }
         Focl_StringView cmdView = {(size_t)(cmdEnd - cmdStart), (char*)cmdStart};
-        Focl_Object* obj = Focl_parseCommand(p->context, &cmdView);
+        Focl_Result obj = Focl_parseCommand(p->context, &cmdView);
         p->pos = cmdEnd + 1;
-        return obj;
+        if (obj.flow != FOCL_FLOW_OK)
+        {
+            p->flow = obj.flow;
+            p->flowValue = obj.value;
+            p->exitCode = obj.exitCode;
+            return NULL;
+        }
+        return obj.value;
     }
     if (*p->pos == '!')
     {
@@ -3640,9 +3668,769 @@ bool isWordParseEnd(const Focl_StringView* strView, const char* pos)
     return (pos >= strView->strPtr + strView->len);
 }
 
+/* VM */
+
+typedef enum
+{
+    OP_PUSH_CONST = 0,
+    OP_PUSH_WORD,
+    OP_CALL,
+    OP_CALL_DYNAMIC
+}Focl_OpCode;
+
+typedef struct
+{
+    uint8_t op;
+    uint32_t a;
+    uint32_t b;
+}Focl_Instr;
+
+struct Focl_Chunk
+{
+    Focl_Context* context; /* borrowed; used to release constants */
+    Focl_Instr* code;
+    size_t codeLen;
+    size_t codeCap;
+    Focl_Object** constants;
+    size_t constLen;
+    size_t constCap;
+    Focl_StringView* words;
+    size_t wordLen;
+    size_t wordCap;
+    Focl_String* source; /* owned copy of the source text */
+};
+
+static void FoclChunkEmit(Focl_Chunk* chunk, uint8_t op, uint32_t a, uint32_t b)
+{
+    if (chunk->codeLen == chunk->codeCap)
+    {
+        size_t newCap = (chunk->codeCap == 0) ? 16 : chunk->codeCap * 2;
+        chunk->code = (Focl_Instr*)Focl_realloc(chunk->code, sizeof(Focl_Instr) * newCap);
+        chunk->codeCap = newCap;
+    }
+    chunk->code[chunk->codeLen].op = op;
+    chunk->code[chunk->codeLen].a = a;
+    chunk->code[chunk->codeLen].b = b;
+    chunk->codeLen++;
+}
+static uint32_t FoclChunkAddConst(Focl_Chunk* chunk, Focl_Object* obj)
+{
+    if (chunk->constLen == chunk->constCap)
+    {
+        size_t newCap = (chunk->constCap == 0) ? 8 : chunk->constCap * 2;
+        chunk->constants = (Focl_Object**)Focl_realloc(chunk->constants, sizeof(Focl_Object*) * newCap);
+        chunk->constCap = newCap;
+    }
+    chunk->constants[chunk->constLen] = obj;
+    return (uint32_t)chunk->constLen++;
+}
+static uint32_t FoclChunkAddStringConst(Focl_Chunk* chunk, const Focl_StringView* view)
+{
+    Focl_Context* context = chunk->context;
+    Focl_Object* obj = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
+    FoclStrAssignView(obj->as.data, view);
+    return FoclChunkAddConst(chunk, obj);
+}
+static uint32_t FoclChunkAddWord(Focl_Chunk* chunk, const Focl_StringView* view)
+{
+    if (chunk->wordLen == chunk->wordCap)
+    {
+        size_t newCap = (chunk->wordCap == 0) ? 8 : chunk->wordCap * 2;
+        chunk->words = (Focl_StringView*)Focl_realloc(chunk->words, sizeof(Focl_StringView) * newCap);
+        chunk->wordCap = newCap;
+    }
+    chunk->words[chunk->wordLen] = *view;
+    return (uint32_t)chunk->wordLen++;
+}
+static bool FoclIsStaticCommandName(const Focl_StringView* view)
+{
+    return !Focl_isInteger_View(view) &&
+           !Focl_isFloat_View(view) &&
+           !Focl_isString_View(view) &&
+           !Focl_isVarSubstition_View(view) &&
+           !Focl_isCmdSubstition_View(view) &&
+           !Focl_isBlock_View(view);
+}
+static void FoclCompileWord(Focl_Chunk* chunk, const Focl_StringView* view)
+{
+    if (Focl_isInteger_View(view))
+    {
+        Focl_Object* obj = FoclFlatObjPoolAlloc(chunk->context->flatObjPool, FOCL_OBJ_TYPE_INT);
+        FoclObjectBoxInt(obj, Focl_StrToInt_View(view));
+        FoclChunkEmit(chunk, OP_PUSH_CONST, FoclChunkAddConst(chunk, obj), 0);
+    }
+    else if (Focl_isFloat_View(view))
+    {
+        Focl_Object* obj = FoclFlatObjPoolAlloc(chunk->context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
+        FoclObjectBoxFloat(obj, Focl_StrToFloat_View(view));
+        FoclChunkEmit(chunk, OP_PUSH_CONST, FoclChunkAddConst(chunk, obj), 0);
+    }
+    else if (Focl_isString_View(view) ||
+             Focl_isVarSubstition_View(view) ||
+             Focl_isCmdSubstition_View(view) ||
+             Focl_isBlock_View(view))
+    {
+        FoclChunkEmit(chunk, OP_PUSH_WORD, FoclChunkAddWord(chunk, view), 0);
+    }
+    else
+    {
+        FoclChunkEmit(chunk, OP_PUSH_CONST, FoclChunkAddStringConst(chunk, view), 0);
+    }
+}
+static void FoclCompileCommand(Focl_Chunk* chunk, Focl_StringView* cmdView)
+{
+    Focl_StringView remaining = *cmdView;
+    Focl_StringView nameView = getNextWord(&remaining);
+    if (nameView.strPtr == NULL || nameView.len == 0)
+    {
+        return;
+    }
+    bool dynamicName = !FoclIsStaticCommandName(&nameView);
+    if (dynamicName)
+    {
+        FoclCompileWord(chunk, &nameView);
+    }
+    uint32_t argc = 0;
+    while (remaining.len > 0)
+    {
+        Focl_StringView argView = getNextWord(&remaining);
+        if (argView.strPtr == NULL || argView.len == 0)
+        {
+            break;
+        }
+        FoclCompileWord(chunk, &argView);
+        argc++;
+    }
+    if (dynamicName)
+    {
+        FoclChunkEmit(chunk, OP_CALL_DYNAMIC, 0, argc);
+    }
+    else
+    {
+        FoclChunkEmit(chunk, OP_CALL, FoclChunkAddStringConst(chunk, &nameView), argc);
+    }
+}
+
+Focl_Chunk* Focl_Compile(Focl_Context* context, const Focl_StringView* sourceView)
+{
+    Focl_Chunk* chunk = (Focl_Chunk*)Focl_malloc(sizeof(Focl_Chunk));
+    chunk->context = context;
+    chunk->code = NULL;
+    chunk->codeLen = 0;
+    chunk->codeCap = 0;
+    chunk->constants = NULL;
+    chunk->constLen = 0;
+    chunk->constCap = 0;
+    chunk->words = NULL;
+    chunk->wordLen = 0;
+    chunk->wordCap = 0;
+    chunk->source = FoclStringPoolAlloc(context->strPool);
+    FoclStrAssignView(chunk->source, sourceView);
+
+    Focl_StringView remaining = {chunk->source->length, chunk->source->data};
+    while (1)
+    {
+        Focl_StringView cmdView = getNextLine(&remaining);
+        if (remaining.len == 0)
+        {
+            if (cmdView.strPtr == NULL || cmdView.len == 0)
+            {
+                break;
+            }
+        }
+        if (cmdView.strPtr == NULL || cmdView.len == 0)
+        {
+            continue;
+        }
+        FoclCompileCommand(chunk, &cmdView);
+    }
+    return chunk;
+}
+Focl_Chunk* Focl_CompileSource(Focl_Context* context, const char* source)
+{
+    Focl_StringView sourceView = {strlen(source), (char*)source};
+    return Focl_Compile(context, &sourceView);
+}
+void Focl_ChunkFree(Focl_Chunk* chunk)
+{
+    if (chunk == NULL)
+    {
+        return;
+    }
+    Focl_Context* context = chunk->context;
+    for (size_t i = 0; i < chunk->constLen; i++)
+    {
+        FoclObjectRelease(chunk->constants[i], context);
+    }
+    Focl_free(chunk->constants);
+    Focl_free(chunk->code);
+    Focl_free(chunk->words);
+    if (chunk->source != NULL)
+    {
+        FoclStringPoolFree(chunk->source, context->strPool);
+    }
+    Focl_free(chunk);
+}
+
+/* BYTECODE SERIALIZATION */
+
+#define FOCL_BYTECODE_MAGIC "FOCB"
+#define FOCL_BYTECODE_VERSION 1
+
+typedef struct
+{
+    unsigned char* data;
+    size_t size;
+    size_t cap;
+    bool ok;
+}Focl_ByteWriter;
+
+typedef struct
+{
+    const unsigned char* data;
+    size_t size;
+    size_t pos;
+    bool ok;
+}Focl_ByteReader;
+
+static void FoclByteWriterReserve(Focl_ByteWriter* writer, size_t extra)
+{
+    if (!writer->ok)
+    {
+        return;
+    }
+    if (writer->size + extra <= writer->cap)
+    {
+        return;
+    }
+    size_t newCap = (writer->cap == 0) ? 256 : writer->cap;
+    while (newCap < writer->size + extra)
+    {
+        newCap *= 2;
+    }
+    writer->data = (unsigned char*)Focl_realloc(writer->data, newCap);
+    writer->cap = newCap;
+}
+static void FoclByteWriterU8(Focl_ByteWriter* writer, uint8_t value)
+{
+    if (!writer->ok)
+    {
+        return;
+    }
+    FoclByteWriterReserve(writer, 1);
+    writer->data[writer->size++] = value;
+}
+static void FoclByteWriterU32(Focl_ByteWriter* writer, uint32_t value)
+{
+    if (!writer->ok)
+    {
+        return;
+    }
+    FoclByteWriterReserve(writer, 4);
+    for (int i = 0; i < 4; i++)
+    {
+        writer->data[writer->size++] = (unsigned char)((value >> (i * 8)) & 0xFF);
+    }
+}
+static void FoclByteWriterU64(Focl_ByteWriter* writer, uint64_t value)
+{
+    if (!writer->ok)
+    {
+        return;
+    }
+    FoclByteWriterReserve(writer, 8);
+    for (int i = 0; i < 8; i++)
+    {
+        writer->data[writer->size++] = (unsigned char)((value >> (i * 8)) & 0xFF);
+    }
+}
+static void FoclByteWriterBytes(Focl_ByteWriter* writer, const void* data, size_t size)
+{
+    if (!writer->ok)
+    {
+        return;
+    }
+    FoclByteWriterReserve(writer, size);
+    memcpy(writer->data + writer->size, data, size);
+    writer->size += size;
+}
+static void FoclByteWriterF64(Focl_ByteWriter* writer, double value)
+{
+    uint64_t bits = 0;
+    memcpy(&bits, &value, sizeof(double));
+    FoclByteWriterU64(writer, bits);
+}
+static uint8_t FoclByteReaderU8(Focl_ByteReader* reader)
+{
+    if (!reader->ok || reader->pos + 1 > reader->size)
+    {
+        reader->ok = false;
+        return 0;
+    }
+    return reader->data[reader->pos++];
+}
+static uint32_t FoclByteReaderU32(Focl_ByteReader* reader)
+{
+    if (!reader->ok || reader->pos + 4 > reader->size)
+    {
+        reader->ok = false;
+        return 0;
+    }
+    uint32_t value = (uint32_t)reader->data[reader->pos]
+                   | ((uint32_t)reader->data[reader->pos + 1] << 8)
+                   | ((uint32_t)reader->data[reader->pos + 2] << 16)
+                   | ((uint32_t)reader->data[reader->pos + 3] << 24);
+    reader->pos += 4;
+    return value;
+}
+static uint64_t FoclByteReaderU64(Focl_ByteReader* reader)
+{
+    uint64_t value = 0;
+    for (int i = 0; i < 8; i++)
+    {
+        value |= ((uint64_t)FoclByteReaderU8(reader)) << (i * 8);
+    }
+    return value;
+}
+static double FoclByteReaderF64(Focl_ByteReader* reader)
+{
+    uint64_t bits = FoclByteReaderU64(reader);
+    double value = 0.0;
+    memcpy(&value, &bits, sizeof(double));
+    return value;
+}
+static bool FoclByteReaderBytes(Focl_ByteReader* reader, void* dst, size_t size)
+{
+    if (!reader->ok || reader->pos + size > reader->size)
+    {
+        reader->ok = false;
+        return false;
+    }
+    memcpy(dst, reader->data + reader->pos, size);
+    reader->pos += size;
+    return true;
+}
+
+Focl_Bytecode Focl_ChunkSerialize(Focl_Chunk* chunk)
+{
+    Focl_Bytecode result = {NULL, 0};
+    if (chunk == NULL)
+    {
+        return result;
+    }
+
+    Focl_ByteWriter writer = {NULL, 0, 0, true};
+    FoclByteWriterBytes(&writer, FOCL_BYTECODE_MAGIC, 4);
+    FoclByteWriterU32(&writer, FOCL_BYTECODE_VERSION);
+    FoclByteWriterU32(&writer, 0); /* flags */
+
+    FoclByteWriterU32(&writer, (uint32_t)chunk->source->length);
+    FoclByteWriterBytes(&writer, chunk->source->data, chunk->source->length);
+
+    FoclByteWriterU32(&writer, (uint32_t)chunk->codeLen);
+    for (size_t i = 0; i < chunk->codeLen; i++)
+    {
+        FoclByteWriterU8(&writer, chunk->code[i].op);
+        FoclByteWriterU32(&writer, chunk->code[i].a);
+        FoclByteWriterU32(&writer, chunk->code[i].b);
+    }
+
+    FoclByteWriterU32(&writer, (uint32_t)chunk->constLen);
+    for (size_t i = 0; i < chunk->constLen; i++)
+    {
+        Focl_Object* obj = chunk->constants[i];
+        if (obj->type == FOCL_OBJ_TYPE_INT)
+        {
+            FoclByteWriterU8(&writer, 0);
+            FoclByteWriterU64(&writer, (uint64_t)(int64_t)obj->as.i);
+        }
+        else if (obj->type == FOCL_OBJ_TYPE_FLOAT)
+        {
+            FoclByteWriterU8(&writer, 1);
+            FoclByteWriterF64(&writer, (double)obj->as.f);
+        }
+        else if (obj->type == FOCL_OBJ_TYPE_STR)
+        {
+            FoclByteWriterU8(&writer, 2);
+            FoclByteWriterU32(&writer, (uint32_t)obj->as.data->length);
+            FoclByteWriterBytes(&writer, obj->as.data->data, obj->as.data->length);
+        }
+        else
+        {
+            writer.ok = false;
+            break;
+        }
+    }
+
+    FoclByteWriterU32(&writer, (uint32_t)chunk->wordLen);
+    for (size_t i = 0; i < chunk->wordLen; i++)
+    {
+        Focl_StringView* word = &chunk->words[i];
+        if (word->strPtr < chunk->source->data ||
+            word->strPtr + word->len > chunk->source->data + chunk->source->length)
+        {
+            writer.ok = false;
+            break;
+        }
+        FoclByteWriterU32(&writer, (uint32_t)(word->strPtr - chunk->source->data));
+        FoclByteWriterU32(&writer, (uint32_t)word->len);
+    }
+
+    if (!writer.ok)
+    {
+        Focl_free(writer.data);
+        return result;
+    }
+    result.data = writer.data;
+    result.size = writer.size;
+    return result;
+}
+void Focl_BytecodeFree(Focl_Bytecode* bytecode)
+{
+    if (bytecode == NULL)
+    {
+        return;
+    }
+    Focl_free(bytecode->data);
+    bytecode->data = NULL;
+    bytecode->size = 0;
+}
+Focl_Chunk* Focl_ChunkDeserialize(Focl_Context* context, const void* data, size_t size)
+{
+    if (data == NULL || size < 12)
+    {
+        return NULL;
+    }
+    Focl_ByteReader reader = {(const unsigned char*)data, size, 0, true};
+
+    char magic[4];
+    if (!FoclByteReaderBytes(&reader, magic, 4) ||
+        memcmp(magic, FOCL_BYTECODE_MAGIC, 4) != 0)
+    {
+        return NULL;
+    }
+    uint32_t version = FoclByteReaderU32(&reader);
+    if (!reader.ok || version != FOCL_BYTECODE_VERSION)
+    {
+        return NULL;
+    }
+    (void)FoclByteReaderU32(&reader); /* flags */
+    if (!reader.ok)
+    {
+        return NULL;
+    }
+
+    uint32_t sourceLen = FoclByteReaderU32(&reader);
+    if (!reader.ok || reader.pos + sourceLen > reader.size)
+    {
+        return NULL;
+    }
+
+    Focl_Chunk* chunk = (Focl_Chunk*)Focl_malloc(sizeof(Focl_Chunk));
+    chunk->context = context;
+    chunk->code = NULL;
+    chunk->codeLen = 0;
+    chunk->codeCap = 0;
+    chunk->constants = NULL;
+    chunk->constLen = 0;
+    chunk->constCap = 0;
+    chunk->words = NULL;
+    chunk->wordLen = 0;
+    chunk->wordCap = 0;
+    chunk->source = FoclStringPoolAlloc(context->strPool);
+    FoclStrAssign(chunk->source, (const char*)(reader.data + reader.pos), sourceLen);
+    reader.pos += sourceLen;
+
+    uint32_t codeLen = FoclByteReaderU32(&reader);
+    if (!reader.ok)
+    {
+        goto fail;
+    }
+    if (codeLen > 0)
+    {
+        chunk->code = (Focl_Instr*)Focl_malloc(sizeof(Focl_Instr) * codeLen);
+        chunk->codeCap = codeLen;
+    }
+    for (uint32_t i = 0; i < codeLen; i++)
+    {
+        uint8_t op = FoclByteReaderU8(&reader);
+        uint32_t a = FoclByteReaderU32(&reader);
+        uint32_t b = FoclByteReaderU32(&reader);
+        if (!reader.ok)
+        {
+            goto fail;
+        }
+        chunk->code[i].op = op;
+        chunk->code[i].a = a;
+        chunk->code[i].b = b;
+        chunk->codeLen++;
+    }
+
+    uint32_t constLen = FoclByteReaderU32(&reader);
+    if (!reader.ok)
+    {
+        goto fail;
+    }
+    if (constLen > 0)
+    {
+        chunk->constants = (Focl_Object**)Focl_malloc(sizeof(Focl_Object*) * constLen);
+        chunk->constCap = constLen;
+    }
+    for (uint32_t i = 0; i < constLen; i++)
+    {
+        uint8_t tag = FoclByteReaderU8(&reader);
+        if (!reader.ok)
+        {
+            goto fail;
+        }
+        Focl_Object* obj = NULL;
+        if (tag == 0)
+        {
+            int64_t value = (int64_t)FoclByteReaderU64(&reader);
+            if (!reader.ok)
+            {
+                goto fail;
+            }
+            obj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
+            FoclObjectBoxInt(obj, (Focl_Obj_Int)value);
+        }
+        else if (tag == 1)
+        {
+            double value = FoclByteReaderF64(&reader);
+            if (!reader.ok)
+            {
+                goto fail;
+            }
+            obj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
+            FoclObjectBoxFloat(obj, (Focl_Obj_Float)value);
+        }
+        else if (tag == 2)
+        {
+            uint32_t strLen = FoclByteReaderU32(&reader);
+            if (!reader.ok || reader.pos + strLen > reader.size)
+            {
+                goto fail;
+            }
+            obj = FoclStringObjPoolAlloc(context->strObjPool, context->strPool, FOCL_OBJ_TYPE_STR);
+            FoclStrAssign(obj->as.data, (const char*)(reader.data + reader.pos), strLen);
+            reader.pos += strLen;
+        }
+        else
+        {
+            goto fail;
+        }
+        chunk->constants[i] = obj;
+        chunk->constLen++;
+    }
+
+    uint32_t wordLen = FoclByteReaderU32(&reader);
+    if (!reader.ok)
+    {
+        goto fail;
+    }
+    if (wordLen > 0)
+    {
+        chunk->words = (Focl_StringView*)Focl_malloc(sizeof(Focl_StringView) * wordLen);
+        chunk->wordCap = wordLen;
+    }
+    for (uint32_t i = 0; i < wordLen; i++)
+    {
+        uint32_t offset = FoclByteReaderU32(&reader);
+        uint32_t len = FoclByteReaderU32(&reader);
+        if (!reader.ok || (size_t)offset + len > chunk->source->length)
+        {
+            goto fail;
+        }
+        chunk->words[i].strPtr = chunk->source->data + offset;
+        chunk->words[i].len = len;
+        chunk->wordLen++;
+    }
+
+    for (size_t i = 0; i < chunk->codeLen; i++)
+    {
+        Focl_Instr* instr = &chunk->code[i];
+        switch (instr->op)
+        {
+            case OP_PUSH_CONST:
+                if (instr->a >= chunk->constLen)
+                {
+                    goto fail;
+                }
+                break;
+            case OP_PUSH_WORD:
+                if (instr->a >= chunk->wordLen)
+                {
+                    goto fail;
+                }
+                break;
+            case OP_CALL:
+                if (instr->a >= chunk->constLen ||
+                    chunk->constants[instr->a]->type != FOCL_OBJ_TYPE_STR)
+                {
+                    goto fail;
+                }
+                break;
+            case OP_CALL_DYNAMIC:
+                break;
+            default:
+                goto fail;
+        }
+    }
+    return chunk;
+
+fail:
+    Focl_ChunkFree(chunk);
+    return NULL;
+}
+
+static Focl_Object* FoclVMStackAt(Focl_Vector* stack, size_t idx)
+{
+    return *(Focl_Object**)FoclVectorAtNoCheck(stack, idx);
+}
+static void FoclVMDropTop(Focl_Context* context, Focl_Vector* stack, size_t count)
+{
+    size_t size = FoclVectorGetSize(stack);
+    for (size_t i = 0; i < count; i++)
+    {
+        FoclObjectRelease(FoclVMStackAt(stack, size - 1 - i), context);
+    }
+    stack->size = size - count;
+}
+static void FoclVMReleaseStack(Focl_Context* context, Focl_Vector* stack)
+{
+    size_t size = FoclVectorGetSize(stack);
+    for (size_t i = 0; i < size; i++)
+    {
+        FoclObjectRelease(FoclVMStackAt(stack, i), context);
+    }
+    stack->size = 0;
+}
+static Focl_Result FoclVMInvoke(Focl_Context* context, Focl_Command* cmd, Focl_Vector* stack, size_t argBase, size_t argc)
+{
+    Focl_Vector* args = FoclVectorPoolAlloc(context->objVecPool);
+    for (size_t i = 0; i < argc; i++)
+    {
+        Focl_Object* obj = FoclVMStackAt(stack, argBase + i);
+        FoclVectorPushBack(args, &obj);
+    }
+    Focl_Result result = cmd->func(context, args, cmd);
+    for (size_t i = 0; i < argc; i++)
+    {
+        FoclObjectRelease(FoclVMStackAt(stack, argBase + i), context);
+    }
+    FoclVectorPoolFree(args, context->objVecPool);
+    stack->size = argBase;
+    return result;
+}
+static Focl_Result FoclVMCallStatic(Focl_Context* context, Focl_Object* nameObj, Focl_Vector* stack, size_t argc)
+{
+    size_t stackSize = FoclVectorGetSize(stack);
+    size_t argBase = stackSize - argc;
+    Focl_Command* cmd = Focl_FindCommand(context, FoclObjectGetString(nameObj));
+    if (cmd == FOCL_COMMAND_ERROR)
+    {
+        FoclVMDropTop(context, stack, argc);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND));
+    }
+    return FoclVMInvoke(context, cmd, stack, argBase, argc);
+}
+static Focl_Result FoclVMCallDynamic(Focl_Context* context, Focl_Vector* stack, size_t argc)
+{
+    size_t stackSize = FoclVectorGetSize(stack);
+    size_t nameIdx = stackSize - argc - 1;
+    Focl_Object* nameObj = FoclVMStackAt(stack, nameIdx);
+    if (nameObj->type != FOCL_OBJ_TYPE_STR)
+    {
+        FoclVMDropTop(context, stack, argc + 1);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND));
+    }
+    Focl_Command* cmd = Focl_FindCommand(context, FoclObjectGetString(nameObj));
+    if (cmd == FOCL_COMMAND_ERROR)
+    {
+        FoclVMDropTop(context, stack, argc + 1);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND));
+    }
+    FoclObjectRelease(nameObj, context);
+    Focl_Result result = FoclVMInvoke(context, cmd, stack, nameIdx + 1, argc);
+    stack->size = nameIdx;
+    return result;
+}
+
+Focl_Result Focl_VMExecute(Focl_Context* context, Focl_Chunk* chunk)
+{
+    if (chunk == NULL)
+    {
+        return FoclResultOk(FoclObjectVoid(context->flatObjPool));
+    }
+    Focl_Vector* stack = FoclVectorPoolAlloc(context->objVecPool);
+    Focl_Result last = FoclResultOk(FoclObjectVoid(context->flatObjPool));
+
+    for (size_t ip = 0; ip < chunk->codeLen; ip++)
+    {
+        Focl_Instr* instr = &chunk->code[ip];
+        switch (instr->op)
+        {
+            case OP_PUSH_CONST:
+            {
+                Focl_Object* obj = chunk->constants[instr->a];
+                FoclObjectRetain(obj);
+                FoclVectorPushBack(stack, &obj);
+                break;
+            }
+            case OP_PUSH_WORD:
+            {
+                Focl_Result r = getFoclObjectWithStringView(context, &chunk->words[instr->a]);
+                if (r.flow != FOCL_FLOW_OK)
+                {
+                    FoclVMReleaseStack(context, stack);
+                    FoclVectorPoolFree(stack, context->objVecPool);
+                    FoclResultRelease(&last, context);
+                    return r;
+                }
+                FoclVectorPushBack(stack, &r.value);
+                break;
+            }
+            case OP_CALL:
+            {
+                Focl_Result r = FoclVMCallStatic(context, chunk->constants[instr->a], stack, instr->b);
+                if (r.flow != FOCL_FLOW_OK)
+                {
+                    FoclVMReleaseStack(context, stack);
+                    FoclVectorPoolFree(stack, context->objVecPool);
+                    FoclResultRelease(&last, context);
+                    return r;
+                }
+                FoclResultRelease(&last, context);
+                last = r;
+                break;
+            }
+            case OP_CALL_DYNAMIC:
+            {
+                Focl_Result r = FoclVMCallDynamic(context, stack, instr->b);
+                if (r.flow != FOCL_FLOW_OK)
+                {
+                    FoclVMReleaseStack(context, stack);
+                    FoclVectorPoolFree(stack, context->objVecPool);
+                    FoclResultRelease(&last, context);
+                    return r;
+                }
+                FoclResultRelease(&last, context);
+                last = r;
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    FoclVMReleaseStack(context, stack);
+    FoclVectorPoolFree(stack, context->objVecPool);
+    return last;
+}
+
 /* STRING EXPANSION */
 
-void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_StringView* src)
+Focl_Result FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_StringView* src)
 {
     const char* readPos = src->strPtr;
     const char* strEnd = src->strPtr + src->len;
@@ -3797,11 +4585,15 @@ void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_String
             if (bracketDepth == 0)
             {
                 Focl_StringView cmdView = {(size_t)(cmdEnd - cmdStart), (char*)cmdStart};
-                Focl_Object* cmdResult = Focl_parseCommand(context, &cmdView);
-
-                if (cmdResult != NULL && cmdResult->type != FOCL_OBJ_TYPE_ERROR)
+                Focl_Result cmdResult = Focl_parseCommand(context, &cmdView);
+                if (cmdResult.flow != FOCL_FLOW_OK)
                 {
-                    Focl_String* outStr = FoclObjectStringize(cmdResult, context->strPool);
+                    return cmdResult;
+                }
+
+                if (cmdResult.value != NULL && cmdResult.value->type != FOCL_OBJ_TYPE_ERROR)
+                {
+                    Focl_String* outStr = FoclObjectStringize(cmdResult.value, context->strPool);
                     if (outStr->length > 0)
                     {
                         size_t curLen = dst->length;
@@ -3815,7 +4607,7 @@ void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_String
                         dst->data[dst->length] = '\0';
                     }
                     FoclStringPoolFree(outStr, context->strPool);
-                    FoclObjectRelease(cmdResult, context);
+                    FoclObjectRelease(cmdResult.value, context);
                 }
                 readPos = cmdEnd + 1;
             }
@@ -3844,33 +4636,42 @@ void FoclStrExpansion(Focl_Context* context, Focl_String* dst, const Focl_String
             readPos++;
         }
     }
+    return FoclResultFlow(FOCL_FLOW_OK);
 }
 
 /* STRING EXPANSION */
 
 /* EXPRESSION */
 
-Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView)
+Focl_Result Focl_exprBool(Focl_Context* context, const Focl_StringView* strView)
 {
     Focl_ExprParser parser;
     parser.context = context;
     parser.pos = strView->strPtr;
     parser.end = strView->strPtr + strView->len;
+    parser.flow = FOCL_FLOW_OK;
+    parser.flowValue = NULL;
+    parser.exitCode = 0;
 
     Focl_Object* result = exprParseExpression(&parser);
+    if (parser.flow != FOCL_FLOW_OK)
+    {
+        Focl_Result flowResult = {parser.flow, parser.flowValue, parser.exitCode};
+        return flowResult;
+    }
     if (result == NULL)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, "Empty boolean expression");
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, "Empty boolean expression"));
     }
     if (result->type == FOCL_OBJ_TYPE_ERROR)
     {
-        return result;
+        return FoclResultError(result);
     }
     exprSkipSpace(&parser);
     if (parser.pos < parser.end)
     {
         FoclObjectRelease(result, context);
-        return FoclObjectError(context->strObjPool, context->strPool, "Unexpected characters in boolean expression");
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, "Unexpected characters in boolean expression"));
     }
 
     bool b;
@@ -3889,10 +4690,10 @@ Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView
     else
     {
         FoclObjectRelease(result, context);
-        return FoclObjectError(context->strObjPool, context->strPool, "Expected boolean expression, got non-boolean value");
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, "Expected boolean expression, got non-boolean value"));
     }
     FoclObjectRelease(result, context);
-    return FoclObjectBool(context->flatObjPool, b ? FOCL_OBJ_TRUE : FOCL_OBJ_FALSE);
+    return FoclResultOk(FoclObjectBool(context->flatObjPool, b ? FOCL_OBJ_TRUE : FOCL_OBJ_FALSE));
 }
 
 /* EXPRESSION */
@@ -3929,29 +4730,32 @@ bool FoclObjectsEqual(Focl_Object* a, Focl_Object* b)
     }
 }
 
-Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* strView)
+Focl_Result Focl_parseCommand(Focl_Context* context, const Focl_StringView* strView)
 {
     Focl_StringView remaining = *strView;
     Focl_StringView cmdView = getNextWord(&remaining);
     if (cmdView.strPtr == NULL || cmdView.len == 0)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND));
     }
-    Focl_Object* cmdObj = getFoclObjectWithStringView(context, &cmdView);
-    if (cmdObj->type != FOCL_OBJ_TYPE_STR)
+    Focl_Result cmdObj = getFoclObjectWithStringView(context, &cmdView);
+    if (cmdObj.flow != FOCL_FLOW_OK)
     {
-        FoclObjectRelease(cmdObj, context);
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
+        return cmdObj;
     }
-    
-    Focl_Command* cmd = Focl_FindCommand(context, FoclObjectGetString(cmdObj));
-    FoclObjectRelease(cmdObj, context);
+    if (cmdObj.value->type != FOCL_OBJ_TYPE_STR)
+    {
+        FoclObjectRelease(cmdObj.value, context);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND));
+    }
+
+    Focl_Command* cmd = Focl_FindCommand(context, FoclObjectGetString(cmdObj.value));
+    FoclObjectRelease(cmdObj.value, context);
     if (cmd == FOCL_COMMAND_ERROR)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNKNOWN_COMMAND));
     }
     Focl_Vector* vec = FoclVectorPoolAlloc(context->objVecPool);
-    Focl_Object* obj;
     while (remaining.len > 0)
     {
         Focl_StringView argView = getNextWord(&remaining);
@@ -3959,10 +4763,19 @@ Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* str
         {
             break;
         }
-        obj = getFoclObjectWithStringView(context, &argView);
-        FoclVectorPushBack(vec, &obj);
+        Focl_Result arg = getFoclObjectWithStringView(context, &argView);
+        if (arg.flow != FOCL_FLOW_OK)
+        {
+            for (size_t i = 0; i < FoclVectorGetSize(vec); i++)
+            {
+                FoclObjectRelease(FoclObjVecAt(vec, i), context);
+            }
+            FoclVectorPoolFree(vec, context->objVecPool);
+            return arg;
+        }
+        FoclVectorPushBack(vec, &arg.value);
     }
-    obj = cmd->func(context, vec, cmd);
+    Focl_Result obj = cmd->func(context, vec, cmd);
     for (size_t i = 0; i < FoclVectorGetSize(vec); i++)
     {
         FoclObjectRelease(FoclObjVecAt(vec, i), context);
@@ -3970,10 +4783,10 @@ Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* str
     FoclVectorPoolFree(vec, context->objVecPool);
     return obj;
 }
-Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView)
+Focl_Result Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView)
 {
     Focl_StringView remaining = *strView;
-    Focl_Object* lastResult = FoclObjectVoid(context->flatObjPool);
+    Focl_Result lastResult = FoclResultOk(FoclObjectVoid(context->flatObjPool));
     while (1)
     {
         Focl_StringView cmdView = getNextLine(&remaining);
@@ -3988,18 +4801,18 @@ Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* s
         {
             continue;
         }
-        Focl_Object* result = Focl_parseCommand(context, &cmdView);
-        FoclObjectRelease(lastResult, context);
-        lastResult = result;
-        if (result->type == FOCL_OBJ_TYPE_ERROR)
+        Focl_Result result = Focl_parseCommand(context, &cmdView);
+        FoclResultRelease(&lastResult, context);
+        if (result.flow != FOCL_FLOW_OK)
         {
-            break;
+            return result;
         }
+        lastResult = result;
     }
     return lastResult;
 }
 
-Focl_Object* Focl_parseLine(Focl_Context* context, Focl_String* lineStr)
+Focl_Result Focl_parseLine(Focl_Context* context, Focl_String* lineStr)
 {
     Focl_StringView strView = {lineStr->length, lineStr->data};
     return Focl_parseCommandSequence(context, &strView);
@@ -4177,12 +4990,12 @@ Focl_Object* FoclObjectScan(Focl_StrObjPool* strObjPool, Focl_StringPool* strPoo
     return result;
 }
 
-Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     Focl_StringView argsView = { cmd->args->length, cmd->args->data };
-    Focl_Object* retValue;
+    Focl_Result retValue;
     FoclContextCreateEnterChildEnv(context, FoclStrCStr(cmd->name));
-    if (argsView.len > 2)
+    if (argsView.len > 0)
     {
         size_t argCount = FoclVectorGetSize(objVec);
         Focl_StringView remaining = argsView;
@@ -4194,7 +5007,7 @@ Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
             if (arg.strPtr == NULL || arg.len == 0)
             {
                 FoclStringPoolFree(argTmpStr, context->strPool);
-                retValue = FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+                retValue = FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
                 goto exitChildEnv;
             }
             Focl_Object* originObj = FoclObjVecAt(objVec, i);
@@ -4208,24 +5021,27 @@ Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
         Focl_StringView leftover = getNextWord(&remaining);
         if (leftover.strPtr != NULL && leftover.len != 0)
         {
-            retValue = FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+            retValue = FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
             goto exitChildEnv;
         }
     }
-    bool oldHasReturn = context->hasReturnBuf;
-    context->hasReturnBuf = true;
-    context->returnValue = NULL;
-    if (setjmp(context->returnBuf) == 0)
+    if (cmd->chunk == NULL)
     {
         Focl_StringView procView = {cmd->proc->length, cmd->proc->data};
-        retValue = Focl_parseCommandSequence(context, &procView);
+        cmd->chunk = Focl_Compile(context, &procView);
     }
-    else
+    retValue = Focl_VMExecute(context, cmd->chunk);
+    if (retValue.flow == FOCL_FLOW_RETURN)
     {
-        retValue = context->returnValue;
+        retValue.flow = FOCL_FLOW_OK;
     }
-    context->hasReturnBuf = oldHasReturn;
-    context->returnValue = NULL;
+    else if (retValue.flow == FOCL_FLOW_BREAK || retValue.flow == FOCL_FLOW_CONTINUE)
+    {
+        Focl_Flow escapedFlow = retValue.flow;
+        FoclResultRelease(&retValue, context);
+        retValue = FoclResultError(FoclObjectError(context->strObjPool, context->strPool,
+            (escapedFlow == FOCL_FLOW_BREAK) ? "break outside loop" : "continue outside loop"));
+    }
 
 exitChildEnv:
     FoclContextExitFreeChildEnv(context);
@@ -4317,6 +5133,37 @@ int focl_countBraceDepth(const char* str)
 #define CLEAR_CTLPMT "\033[0m"
 #define YELLOW_CTLPMT "\033[93m"
 
+/* At the host boundary, control flows that cannot be handled become errors. */
+static Focl_Result FoclHostNormalizeResult(Focl_Context* ctx, Focl_Result result)
+{
+    const char* msg = NULL;
+    switch (result.flow)
+    {
+        case FOCL_FLOW_BREAK:
+            msg = "break outside loop";
+            break;
+        case FOCL_FLOW_CONTINUE:
+            msg = "continue outside loop";
+            break;
+        case FOCL_FLOW_RETURN:
+            msg = "return outside proc";
+            break;
+        default:
+            return result;
+    }
+    FoclResultRelease(&result, ctx);
+    return FoclResultError(FoclObjectError(ctx->strObjPool, ctx->strPool, msg));
+}
+
+static void FoclPrintError(Focl_Context* ctx, Focl_Result* result, const Focl_String* line)
+{
+    FoclIOBufferPrintf(ctx->outBuffer, RED_CTLPMT"Error:"CLEAR_CTLPMT" %s\n", FoclStrCStr(FoclObjectGetString(result->value)));
+    if (line != NULL)
+    {
+        FoclIOBufferPrintf(ctx->outBuffer, YELLOW_CTLPMT"Line:"CLEAR_CTLPMT" %s\n", FoclStrCStr(line));
+    }
+}
+
 int Focl_ExecFile(Focl_Context* ctx, const char* filename)
 {
     FILE* fp = fopen(filename, "r");
@@ -4326,18 +5173,11 @@ int Focl_ExecFile(Focl_Context* ctx, const char* filename)
         return 1;
     }
     Focl_String* buffer = FoclStringPoolAlloc(ctx->strPool);
-    int depth = 0;
-
-    ctx->hasExitBuf = true;
-    if (setjmp(ctx->exitBuf) != 0)
-    {
-        FoclStringPoolFree(buffer, ctx->strPool);
-        fclose(fp);
-        ctx->hasExitBuf = false;
-        return ctx->exitCode;
-    }
-
     Focl_String* input = FoclStringPoolAlloc(ctx->strPool);
+    int depth = 0;
+    int exitCode = 0;
+    bool shouldStop = false;
+
     while (feof(fp) == 0)
     {
         Focl_getline(fp, &(input->data), &(input->length), &(input->capacity));
@@ -4351,69 +5191,144 @@ int Focl_ExecFile(Focl_Context* ctx, const char* filename)
         {
             continue;
         }
-        Focl_Object* result = Focl_parseLine(ctx, buffer);
-        if (result->type == FOCL_OBJ_TYPE_ERROR)
+
+        Focl_Result result = FoclHostNormalizeResult(ctx, Focl_parseLine(ctx, buffer));
+        if (result.flow == FOCL_FLOW_EXIT)
         {
-            FoclIOBufferPrintf(ctx->outBuffer, RED_CTLPMT"Error:"CLEAR_CTLPMT" %s\n", FoclStrCStr(result->as.data));
-            FoclIOBufferPrintf(ctx->outBuffer, YELLOW_CTLPMT"Line:"CLEAR_CTLPMT" %s\n", FoclStrCStr(buffer));
-            FoclObjectRelease(result, ctx);
-            break;
+            exitCode = result.exitCode;
+            FoclResultRelease(&result, ctx);
+            shouldStop = true;
         }
-        FoclObjectRelease(result, ctx);
+        else if (result.flow == FOCL_FLOW_ERROR)
+        {
+            FoclPrintError(ctx, &result, buffer);
+            FoclResultRelease(&result, ctx);
+            shouldStop = true;
+        }
+        else
+        {
+            FoclResultRelease(&result, ctx);
+        }
+
         FoclStrClear(buffer);
         FoclStrClear(input);
         depth = 0;
-    }
-    FoclStringPoolFree(input, ctx->strPool);
-
-    if (depth > 0)
-    {
-        Focl_Object* result = Focl_parseLine(ctx, buffer);
-        if (result->type == FOCL_OBJ_TYPE_ERROR)
+        if (shouldStop)
         {
-            FoclIOBufferPrintf(ctx->outBuffer, RED_CTLPMT"Error:"CLEAR_CTLPMT" %s\n", FoclStrCStr(result->as.data));
-            FoclIOBufferPrintf(ctx->outBuffer, YELLOW_CTLPMT"Line:"CLEAR_CTLPMT" %s\n", FoclStrCStr(buffer));
+            break;
         }
-        FoclObjectRelease(result, ctx);
     }
 
-    ctx->hasExitBuf = false;
+    if (!shouldStop && depth > 0)
+    {
+        Focl_Result result = FoclHostNormalizeResult(ctx, Focl_parseLine(ctx, buffer));
+        if (result.flow == FOCL_FLOW_EXIT)
+        {
+            exitCode = result.exitCode;
+        }
+        else if (result.flow == FOCL_FLOW_ERROR)
+        {
+            FoclPrintError(ctx, &result, buffer);
+        }
+        FoclResultRelease(&result, ctx);
+    }
+
+    FoclStringPoolFree(input, ctx->strPool);
     FoclStringPoolFree(buffer, ctx->strPool);
     fclose(fp);
-    return ctx->exitCode;
+    return exitCode;
 }
 Focl_Object* Focl_eval(Focl_Context* context, const char* Cstr)
 {
     Focl_String* str = FoclStringPoolAlloc(context->strPool);
     FoclStrAssign(str, Cstr, strlen(Cstr));
     Focl_StringView strView = {str->length, str->data};
-    Focl_Object* result = Focl_parseCommandSequence(context, &strView);
+    Focl_Result result = Focl_parseCommandSequence(context, &strView);
     FoclStringPoolFree(str, context->strPool);
-    return result;
+    if (result.flow == FOCL_FLOW_OK || result.flow == FOCL_FLOW_ERROR)
+    {
+        return result.value;
+    }
+    if (result.flow == FOCL_FLOW_EXIT)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, "exit outside repl");
+    }
+    result = FoclHostNormalizeResult(context, result);
+    return result.value;
+}
+Focl_Object* Focl_evalCompiled(Focl_Context* context, const char* source)
+{
+    Focl_Chunk* chunk = Focl_CompileSource(context, source);
+    Focl_Result result = Focl_VMExecute(context, chunk);
+    Focl_ChunkFree(chunk);
+    if (result.flow == FOCL_FLOW_OK || result.flow == FOCL_FLOW_ERROR)
+    {
+        return result.value;
+    }
+    if (result.flow == FOCL_FLOW_EXIT)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, "exit outside repl");
+    }
+    result = FoclHostNormalizeResult(context, result);
+    return result.value;
+}
+Focl_Object* Focl_evalBytecode(Focl_Context* context, const void* data, size_t size)
+{
+    Focl_Chunk* chunk = Focl_ChunkDeserialize(context, data, size);
+    if (chunk == NULL)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, "Invalid bytecode");
+    }
+    Focl_Result result = Focl_VMExecute(context, chunk);
+    Focl_ChunkFree(chunk);
+    if (result.flow == FOCL_FLOW_OK || result.flow == FOCL_FLOW_ERROR)
+    {
+        return result.value;
+    }
+    if (result.flow == FOCL_FLOW_EXIT)
+    {
+        return FoclObjectError(context->strObjPool, context->strPool, "exit outside repl");
+    }
+    result = FoclHostNormalizeResult(context, result);
+    return result.value;
 }
 int Focl_evalWithExitCode(Focl_Context* context, const char* Cstr)
 {
     Focl_String* str = FoclStringPoolAlloc(context->strPool);
     FoclStrAssign(str, Cstr, strlen(Cstr));
     Focl_StringView strView = {str->length, str->data};
-    Focl_Object* result = Focl_parseCommandSequence(context, &strView);
+    Focl_Result result = Focl_parseCommandSequence(context, &strView);
     FoclStringPoolFree(str, context->strPool);
-    int retValue = (int)FoclObjectUnboxInt(result);
-    FoclObjectRelease(result, context);
+    if (result.flow == FOCL_FLOW_EXIT)
+    {
+        int exitCode = result.exitCode;
+        FoclResultRelease(&result, context);
+        return exitCode;
+    }
+    result = FoclHostNormalizeResult(context, result);
+    if (result.flow == FOCL_FLOW_ERROR)
+    {
+        FoclPrintError(context, &result, NULL);
+        FoclResultRelease(&result, context);
+        return 1;
+    }
+    int retValue = (int)FoclObjectUnboxInt(result.value);
+    FoclResultRelease(&result, context);
     return retValue;
 }
-Focl_Object* Focl_evalFile(Focl_Context* ctx, const char* filename)
+Focl_Result Focl_evalFile(Focl_Context* ctx, const char* filename)
 {
     FILE* fp = fopen(filename, "r");
     if (fp == NULL)
     {
-        return FoclObjectError(ctx->strObjPool, ctx->strPool, "Cannot open file");
+        return FoclResultError(FoclObjectError(ctx->strObjPool, ctx->strPool, "Cannot open file"));
     }
     Focl_String* buffer = FoclStringPoolAlloc(ctx->strPool);
-    int depth = 0;
-
-    Focl_Object* lastResult = NULL;
     Focl_String* input = FoclStringPoolAlloc(ctx->strPool);
+    int depth = 0;
+    bool shouldStop = false;
+    Focl_Result lastResult = FoclResultOk(FoclObjectVoid(ctx->flatObjPool));
+
     while (feof(fp) == 0)
     {
         Focl_getline(fp, &(input->data), &(input->length), &(input->capacity));
@@ -4428,56 +5343,44 @@ Focl_Object* Focl_evalFile(Focl_Context* ctx, const char* filename)
             continue;
         }
 
-        Focl_Object* result = Focl_parseLine(ctx, buffer);
-        if (result->type == FOCL_OBJ_TYPE_ERROR)
+        Focl_Result result = Focl_parseLine(ctx, buffer);
+        FoclResultRelease(&lastResult, ctx);
+        if (result.flow != FOCL_FLOW_OK)
         {
-            FoclIOBufferPrintf(ctx->outBuffer, RED_CTLPMT"Error:"CLEAR_CTLPMT" %s\n", FoclStrCStr(result->as.data));
-            FoclIOBufferPrintf(ctx->outBuffer, YELLOW_CTLPMT"Line:"CLEAR_CTLPMT" %s\n", FoclStrCStr(buffer));
-            if (lastResult != NULL)
+            if (result.flow == FOCL_FLOW_ERROR)
             {
-                FoclObjectRelease(lastResult, ctx);
+                FoclPrintError(ctx, &result, buffer);
             }
-            FoclStringPoolFree(input, ctx->strPool);
-            FoclStringPoolFree(buffer, ctx->strPool);
-            fclose(fp);
-            return result;
+            lastResult = result;
+            shouldStop = true;
         }
-
-        if (lastResult != NULL)
+        else
         {
-            FoclObjectRelease(lastResult, ctx);
+            lastResult = result;
         }
-        lastResult = result;
 
         FoclStrClear(buffer);
         FoclStrClear(input);
         depth = 0;
+        if (shouldStop)
+        {
+            break;
+        }
     }
-    FoclStringPoolFree(input, ctx->strPool);
 
-    if (depth > 0)
+    if (!shouldStop && depth > 0)
     {
-        Focl_Object* result = Focl_parseLine(ctx, buffer);
-        if (result->type == FOCL_OBJ_TYPE_ERROR)
+        Focl_Result result = Focl_parseLine(ctx, buffer);
+        FoclResultRelease(&lastResult, ctx);
+        if (result.flow == FOCL_FLOW_ERROR)
         {
-            FoclIOBufferPrintf(ctx->outBuffer, RED_CTLPMT"Error:"CLEAR_CTLPMT" %s\n", FoclStrCStr(result->as.data));
-            FoclIOBufferPrintf(ctx->outBuffer, YELLOW_CTLPMT"Line:"CLEAR_CTLPMT" %s\n", FoclStrCStr(buffer));
+            FoclPrintError(ctx, &result, buffer);
         }
-        if (lastResult != NULL)
-        {
-            FoclObjectRelease(lastResult, ctx);
-        }
-        FoclStringPoolFree(buffer, ctx->strPool);
-        fclose(fp);
-        return result;
+        lastResult = result;
     }
 
+    FoclStringPoolFree(input, ctx->strPool);
     FoclStringPoolFree(buffer, ctx->strPool);
     fclose(fp);
-
-    if (lastResult == NULL)
-    {
-        return FoclObjectVoid(ctx->flatObjPool);
-    }
     return lastResult;
 }

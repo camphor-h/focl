@@ -1,0 +1,7 @@
+proc f {} {
+    for {set i 0} {$i < 10} {incr i} {
+        if {$i == 3} { return $i }
+    }
+    return -1
+}
+puts [f]

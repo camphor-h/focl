@@ -20,7 +20,9 @@ To prevent the abuse of MIT license (BSD better if you want a super free license
 |---------------------------------|-------------------------------------|
 | `focl`                          | Enters the Focl interactive REPL.              |
 | `focl [Focl Source File]`       | Evaluates the specified Focl file.             |
+| `focl -v`                       | Show version.                                  |
 | `foclc [Focl Source File]`      | Compile Focl source file (need a c compiler).  |
+| `foclc -v`                      | Show version.                                  |
 
 ## Embedding & Extending
 

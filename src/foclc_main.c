@@ -5,6 +5,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include "sys_lean.h"
+#include "focl.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -27,6 +28,7 @@ int64_t Focl_getpid()
 
 #define HEAD_OF_COMPILE_CONTENT_DEF \
     "#include <stdio.h>\n" \
+    "#include <stddef.h>\n" \
     "#ifdef _WIN32\n" \
     "#include <windows.h>\n" \
     "#endif\n" \
@@ -36,7 +38,11 @@ int64_t Focl_getpid()
     "void Focl_RegisterBuiltinCommands(Focl_Context* context);\n" \
     "void freeFoclContext(Focl_Context* context);\n" \
     "void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);\n" \
-    "Focl_Object* Focl_eval(Focl_Context* context, const char* Cstr);\n" \
+    "Focl_Object* Focl_evalBytecode(Focl_Context* context, const void* data, size_t size);\n" \
+    "static const unsigned char foclBytecode[] = {"
+
+#define TAIL_OF_COMPILE_CONTENT_DEF \
+    "};\n" \
     "int main(int argc, char* argv[])\n" \
     "{\n" \
     "#ifdef _WIN32\n" \
@@ -45,10 +51,7 @@ int64_t Focl_getpid()
     "#endif\n"\
     "   Focl_Context* ctx = createFoclContext(stdout, argc, argv);\n" \
     "   Focl_RegisterBuiltinCommands(ctx);\n" \
-    "   FoclObjectRelease(Focl_eval(ctx, \""
-
-#define TAIL_OF_COMPILE_CONTENT_DEF \
-    "\"), ctx);\n" \
+    "   FoclObjectRelease(Focl_evalBytecode(ctx, foclBytecode, sizeof(foclBytecode)), ctx);\n" \
     "   freeFoclContext(ctx);\n" \
     "   return 0;\n" \
     "}"
@@ -72,62 +75,32 @@ int lenOfNum(int64_t n)
     return len;
 }
 
-char* escapeCString(const char* src, size_t len)
+char* bytecodeToCArray(const unsigned char* data, size_t size)
 {
-    char* dst = (char*)malloc(len * 6 + 1);
+    size_t capacity = size * 6 + size / 16 + 4;
+    char* dst = (char*)malloc(capacity);
     if (!dst)
     {
         return NULL;
     }
 
-    char* p = dst;
-    for (size_t i = 0; i < len; i++)
+    size_t pos = 0;
+    for (size_t i = 0; i < size; i++)
     {
-        unsigned char c = src[i];
-        switch (c)
+        if (i % 16 == 0)
         {
-            case '\n':
-                *p++ = '\\';
-                *p++ = 'n';
-                break;
-            case '\r':
-                *p++ = '\\';
-                *p++ = 'r';
-                break;
-            case '\t':
-                *p++ = '\\';
-                *p++ = 't';
-                break;
-            case '"':
-                *p++ = '\\';
-                *p++ = '"';
-                break;
-            case '\\':
-                *p++ = '\\';
-                *p++ = '\\';
-                break;
-            case '\b':
-                *p++ = '\\';
-                *p++ = 'b';
-                break;
-            case '\f':
-                *p++ = '\\';
-                *p++ = 'f';
-                break;
-            default:
-                if (c < 0x20 || c >= 0x7F)
-                {
-                    sprintf(p, "\\%03o", c);
-                    p += 4;
-                }
-                else
-                {
-                    *p++ = c;
-                }
-                break;
+            dst[pos++] = '\n';
         }
+        int written = snprintf(dst + pos, capacity - pos, "0x%02x,", data[i]);
+        if (written < 0 || (size_t)written >= capacity - pos)
+        {
+            free(dst);
+            return NULL;
+        }
+        pos += (size_t)written;
     }
-    *p = '\0';
+    dst[pos++] = '\n';
+    dst[pos] = '\0';
     return dst;
 }
 
@@ -191,6 +164,11 @@ int main(int argc, char* argv[])
                 printf("Error: Missing output file name after -o\n");
                 return 1;
             }
+        }
+        else if (strcmp(argv[i], "-v") == 0)
+        {
+            printf("foclc %s\n", Focl_GetVersionStr());
+            return 0;
         }
         else if (strcmp(argv[i], "-d") == 0)
         {
@@ -303,20 +281,31 @@ int main(int argc, char* argv[])
                 size_t readSize = fread(sourceContent, 1, fileSize, srcFile);
                 sourceContent[readSize] = '\0';
 
-                char* escapedContent = escapeCString(sourceContent, readSize);
+                Focl_Context* compileCtx = createFoclContext(stdout, 0, NULL);
+                Focl_Chunk* chunk = Focl_CompileSource(compileCtx, sourceContent);
+                Focl_Bytecode bytecode = Focl_ChunkSerialize(chunk);
+                Focl_ChunkFree(chunk);
+                freeFoclContext(compileCtx);
                 free(sourceContent);
 
-                if (escapedContent == NULL)
+                char* bytecodeText = NULL;
+                if (bytecode.data != NULL)
                 {
-                    printf("Error: Failed to escape source content.\n");
+                    bytecodeText = bytecodeToCArray(bytecode.data, bytecode.size);
+                }
+                Focl_BytecodeFree(&bytecode);
+
+                if (bytecodeText == NULL)
+                {
+                    printf("Error: Failed to compile source to bytecode.\n");
                     retValue = 1;
                 }
                 else
                 {
                     size_t headLen = strlen(HEAD_OF_COMPILE_CONTENT);
                     size_t tailLen = strlen(TAIL_OF_COMPILE_CONTENT);
-                    size_t escapedLen = strlen(escapedContent);
-                    size_t totalLen = headLen + escapedLen + tailLen + 1;
+                    size_t bytecodeLen = strlen(bytecodeText);
+                    size_t totalLen = headLen + bytecodeLen + tailLen + 1;
 
                     compileContent = (char*)malloc(totalLen);
                     if (compileContent == NULL)
@@ -331,8 +320,8 @@ int main(int argc, char* argv[])
                         memcpy(ptr, HEAD_OF_COMPILE_CONTENT, headLen);
                         ptr += headLen;
 
-                        memcpy(ptr, escapedContent, escapedLen);
-                        ptr += escapedLen;
+                        memcpy(ptr, bytecodeText, bytecodeLen);
+                        ptr += bytecodeLen;
 
                         memcpy(ptr, TAIL_OF_COMPILE_CONTENT, tailLen);
                         ptr += tailLen;
@@ -442,7 +431,7 @@ int main(int argc, char* argv[])
                         free(compileContent);
                     }
 
-                    free(escapedContent);
+                    free(bytecodeText);
                 }
             }
         }

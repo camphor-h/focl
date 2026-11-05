@@ -1,0 +1,9 @@
+set i 0
+while {$i < 4} {
+    if {$i == 2} {
+        incr i
+        continue
+    }
+    puts "i=$i"
+    incr i
+}

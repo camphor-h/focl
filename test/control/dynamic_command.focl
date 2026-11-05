@@ -1,0 +1,6 @@
+set cmd puts
+set i 0
+while {$i < 3} {
+    $cmd "i=$i"
+    incr i
+}

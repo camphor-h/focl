@@ -15,13 +15,7 @@ int Focl_REPL(Focl_Context* ctx)
     Focl_String* prompt = FoclStringPoolAlloc(ctx->strPool);
     Focl_String* buffer = FoclStringPoolAlloc(ctx->strPool);
     int depth = 0;
-    ctx->hasExitBuf = true;
-    if (setjmp(ctx->exitBuf) != 0)
-    {
-        FoclStringPoolFree(buffer, ctx->strPool);
-        ctx->hasExitBuf = false;
-        return ctx->exitCode;
-    }
+    int exitCode = 0;
 
 #ifdef _WIN32
     char* input = NULL;
@@ -85,20 +79,47 @@ int Focl_REPL(Focl_Context* ctx)
         {
             continue;
         }
-        Focl_Object* result = Focl_parseLine(ctx, buffer);
+        Focl_Result result = Focl_parseLine(ctx, buffer);
 
-        if (result->type == FOCL_OBJ_TYPE_ERROR)
+        if (result.flow == FOCL_FLOW_EXIT)
         {
-            FoclIOBufferPrintf(ctx->outBuffer, RED_CTLPMT"Error:"CLEAR_CTLPMT" %s\n", FoclStrCStr(result->as.data));
+            exitCode = result.exitCode;
+            FoclResultRelease(&result, ctx);
+            FoclStrClear(buffer);
+            break;
+        }
+
+        const char* flowMsg = NULL;
+        if (result.flow == FOCL_FLOW_BREAK)
+        {
+            flowMsg = "break outside loop";
+        }
+        else if (result.flow == FOCL_FLOW_CONTINUE)
+        {
+            flowMsg = "continue outside loop";
+        }
+        else if (result.flow == FOCL_FLOW_RETURN)
+        {
+            flowMsg = "return outside proc";
+        }
+        if (flowMsg != NULL)
+        {
+            FoclResultRelease(&result, ctx);
+            result = FoclResultError(FoclObjectError(ctx->strObjPool, ctx->strPool, flowMsg));
+        }
+
+        if (result.flow == FOCL_FLOW_ERROR)
+        {
+            FoclIOBufferPrintf(ctx->outBuffer, RED_CTLPMT"Error:"CLEAR_CTLPMT" %s\n", FoclStrCStr(FoclObjectGetString(result.value)));
             FoclIOBufferPrintf(ctx->outBuffer, YELLOW_CTLPMT"Line:"CLEAR_CTLPMT" %s\n", FoclStrCStr(buffer));
         }
-        else if (result->type != FOCL_OBJ_TYPE_VOID)
+        else if (result.value->type != FOCL_OBJ_TYPE_VOID)
         {
-            FoclObjectPrint(result, ctx->outBuffer, ctx->strPool);
+            FoclObjectPrint(result.value, ctx->outBuffer, ctx->strPool);
             FoclIOBufferPutChar(ctx->outBuffer, '\n');
         }
 
-        FoclObjectRelease(result, ctx);
+        FoclResultRelease(&result, ctx);
         FoclStrClear(buffer);
         depth = 0;
     }
@@ -106,7 +127,6 @@ int Focl_REPL(Focl_Context* ctx)
     Focl_free(input);
 #endif
 
-    ctx->hasExitBuf = false;
     FoclStringPoolFree(prompt, ctx->strPool);
-    return ctx->exitCode;
+    return exitCode;
 }

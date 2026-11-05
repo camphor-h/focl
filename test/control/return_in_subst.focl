@@ -1,0 +1,6 @@
+proc f {} {
+    set x [return 42]
+    puts "not reached"
+    return 1
+}
+puts [f]

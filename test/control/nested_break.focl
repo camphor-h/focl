@@ -1,0 +1,11 @@
+set outer 0
+while {$outer < 3} {
+    set inner 0
+    while {$inner < 3} {
+        incr inner
+        if {$inner == 2} { break }
+    }
+    if {$outer == 1} { break }
+    incr outer
+}
+puts "outer=$outer"

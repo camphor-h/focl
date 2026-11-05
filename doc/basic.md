@@ -304,22 +304,12 @@ dict unset d a          ; remove key "a"
 | | `file mkdir path` | Create directory |
 | | `file dirname path` | Get parent directory path |
 | | `file realpath path` | Get absolute/real path |
-| `sys::cp` | `sys::cp src dst` | Copy file to directory |
-| | `sys::cp -r src dst` | Copy recursively (file or dir) |
-| `sys::rm` | `sys::rm path` | Remove file |
-| | `sys::rm -r path` | Remove recursively |
-| `sys::mv` | `sys::mv src dst` | Move/rename file or directory |
-| `sys::cat` | `sys::cat path` | Read and display file contents |
-| `sys::edit` | `sys::edit path` | Edit file using external editor |
 
 **Examples:**
 ```
 file exists "/tmp/test.txt"   ; returns true/false
 file isfile "myfile.txt"      ; returns true if normal file
 file mkdir "mydir"
-sys::cp "src.txt" "destdir/"
-sys::rm -r "old_folder/"
-sys::cat "config.txt"
 ```
 
 ---
@@ -357,7 +347,6 @@ set result [add 5 3]    ; result = 8
 | `expr` | `expr "1 + 2 * 3"` | Evaluate arithmetic expression |
 | `source` | `source path` | Execute a Focl source file |
 | `error` | `error "message"` | Raise an error with the given message |
-| `sys::exec` | `sys::exec "command"` | Run a system command |
 | `sys::name` | `sys::name` | Get OS name (Windows/Linux/Mac OS/FreeBSD/Android) |
 | `sys::sleepms` | `sys::sleepms n` | Sleep for n milliseconds |
 | `curtime` | `curtime` | Get current time string |
@@ -372,7 +361,6 @@ sys::name          ; returns "Linux" or "Windows", etc.
 eval "puts Hello"
 expr "2 + 3 * 4"   ; returns 14
 source "lib.focl"
-sys::exec "ls -la"
 sys::sleepms 500
 error "something went wrong"
 exit 0

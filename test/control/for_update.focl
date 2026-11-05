@@ -1,0 +1,5 @@
+set sum 0
+for {set i 0} {$i < 5} {incr i} {
+    incr sum
+}
+puts "sum=$sum"

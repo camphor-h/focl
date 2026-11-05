@@ -15,23 +15,23 @@
 #define HIDE_CURSOR "\033[?25l"
 #define SHOW_CURSOR "\033[?25h"
 
-Focl_Object* term_clear(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result term_clear(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 0)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     FoclIOBufferPrintf(context->outBuffer, CLEAR_SCREEN);
     FoclIOBufferFlushOut(context->outBuffer);
-    return FoclObjectVoid(context->flatObjPool);
+    return FoclResultOk(FoclObjectVoid(context->flatObjPool));
 }
-Focl_Object* term_gotoxy(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result term_gotoxy(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 2)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* colObj;
     Focl_Object* rowObj;
@@ -41,18 +41,18 @@ Focl_Object* term_gotoxy(Focl_Context* context, Focl_Vector* objVec, Focl_Comman
     Focl_Obj_Int row = FoclObjectUnboxInt(rowObj);
     if (col < 0 || row < 0)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, "Coordinate cannot be negative");
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, "Coordinate cannot be negative"));
     }
     FoclIOBufferPrintf(context->outBuffer, "\033[%" FOCL_FORMAT_INT ";%" FOCL_FORMAT_INT "H", row + 1, col + 1);
     FoclIOBufferFlushOut(context->outBuffer);
-    return FoclObjectVoid(context->flatObjPool);
+    return FoclResultOk(FoclObjectVoid(context->flatObjPool));
 }
-Focl_Object* term_getw(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result term_getw(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 0)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* wObj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
 #ifdef _WIN32
@@ -76,14 +76,14 @@ Focl_Object* term_getw(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
         FoclObjectBoxInt(wObj, 0);
     }
 #endif
-    return wObj;
+    return FoclResultOk(wObj);
 }
-Focl_Object* term_geth(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result term_geth(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 0)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* hObj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
 #ifdef _WIN32
@@ -107,14 +107,14 @@ Focl_Object* term_geth(Focl_Context* context, Focl_Vector* objVec, Focl_Command*
         FoclObjectBoxInt(hObj, 0);
     }
 #endif
-    return hObj;
+    return FoclResultOk(hObj);
 }
-Focl_Object* term_hidecursor(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result term_hidecursor(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 0)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
 #ifdef _WIN32
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -126,14 +126,14 @@ Focl_Object* term_hidecursor(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     FoclIOBufferPrintf(context->outBuffer, HIDE_CURSOR);
     FoclIOBufferFlushOut(context->outBuffer);
 #endif
-    return FoclObjectVoid(context->flatObjPool);
+    return FoclResultOk(FoclObjectVoid(context->flatObjPool));
 }
-Focl_Object* term_showcursor(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result term_showcursor(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 0)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
 #ifdef _WIN32
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -145,7 +145,7 @@ Focl_Object* term_showcursor(Focl_Context* context, Focl_Vector* objVec, Focl_Co
     FoclIOBufferPrintf(context->outBuffer, SHOW_CURSOR);
     FoclIOBufferFlushOut(context->outBuffer);
 #endif
-    return FoclObjectVoid(context->flatObjPool);
+    return FoclResultOk(FoclObjectVoid(context->flatObjPool));
 }
 
 typedef struct
@@ -178,12 +178,12 @@ static const Focl_TermColor focl_termColors[] =
 
 #define FOCL_TERM_COLOR_COUNT (sizeof(focl_termColors) / sizeof(focl_termColors[0]))
 
-Focl_Object* term_color(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result term_color(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* colorNameObj;
     Focl_String* colorName;
@@ -209,12 +209,12 @@ Focl_Object* term_color(Focl_Context* context, Focl_Vector* objVec, Focl_Command
             {
                 FoclIOBufferPrintf(context->outBuffer, "\033[%sm", focl_termColors[i].code);
                 FoclIOBufferFlushOut(context->outBuffer);
-                return FoclObjectVoid(context->flatObjPool);
+                return FoclResultOk(FoclObjectVoid(context->flatObjPool));
             }
         }
-        return FoclObjectError(context->strObjPool, context->strPool, "unknown color");
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, "unknown color"));
     }
-    return FoclObjectVoid(context->flatObjPool);
+    return FoclResultOk(FoclObjectVoid(context->flatObjPool));
 }
 
 int32_t getUtf8CodePoint(const char* bytes);
@@ -279,19 +279,19 @@ int getUtf8StringDisplayWidth(const char* str)
 
     return width;
 }
-Focl_Object* term_stringwidth(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result term_stringwidth(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* stringObj;
     Focl_String* string;
     FOCL_OBJ_VEC_AT_AS_STRING(objVec, 0, stringObj, string, context->strObjPool, context->strPool);
     Focl_Object* widthObj = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
     FoclObjectBoxInt(widthObj, getUtf8StringDisplayWidth(FoclStrCStr(string)));
-    return widthObj;
+    return FoclResultOk(widthObj);
 }
 
 void Focl_RegisterTerminalCommand(Focl_Context* context)

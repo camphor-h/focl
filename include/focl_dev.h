@@ -9,8 +9,8 @@ extern "C"
 #include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
-#include <setjmp.h>
 #include <stdbool.h>
+#include "focl_version.h"
 
 #ifdef USE_F32_ON_64
 #if SIZE_MAX != 0xFFFFFFFFFFFFFFFF
@@ -286,6 +286,66 @@ typedef struct Focl_Object
     }as;
 }Focl_Object;
 
+#ifndef FOCL_CONTROL_TYPES_DEFINED
+#define FOCL_CONTROL_TYPES_DEFINED
+
+/* Control-flow status carried on the normal return path.
+ * A command never jumps out of its caller: it returns one of these. */
+typedef enum
+{
+    FOCL_FLOW_OK = 0, /* normal completion */
+    FOCL_FLOW_ERROR,  /* value is an error object */
+    FOCL_FLOW_BREAK,
+    FOCL_FLOW_CONTINUE,
+    FOCL_FLOW_RETURN, /* value is the returned value */
+    FOCL_FLOW_EXIT    /* exitCode is valid */
+}Focl_Flow;
+
+typedef struct Focl_Result
+{
+    Focl_Flow flow;
+    Focl_Object* value; /* owned by the result; used by OK, ERROR and RETURN */
+    int exitCode;       /* only meaningful for FOCL_FLOW_EXIT */
+}Focl_Result;
+
+typedef struct Focl_Bytecode
+{
+    unsigned char* data;
+    size_t size;
+}Focl_Bytecode;
+
+static inline Focl_Result FoclResultOk(Focl_Object* value)
+{
+    Focl_Result result = {FOCL_FLOW_OK, value, 0};
+    return result;
+}
+static inline Focl_Result FoclResultError(Focl_Object* value)
+{
+    Focl_Result result = {FOCL_FLOW_ERROR, value, 0};
+    return result;
+}
+static inline Focl_Result FoclResultFlow(Focl_Flow flow)
+{
+    Focl_Result result = {flow, NULL, 0};
+    return result;
+}
+static inline Focl_Result FoclResultReturn(Focl_Object* value)
+{
+    Focl_Result result = {FOCL_FLOW_RETURN, value, 0};
+    return result;
+}
+static inline Focl_Result FoclResultExit(int exitCode)
+{
+    Focl_Result result = {FOCL_FLOW_EXIT, NULL, exitCode};
+    return result;
+}
+static inline bool FoclResultIsNormal(Focl_Result result)
+{
+    return (result.flow == FOCL_FLOW_OK);
+}
+
+#endif /* FOCL_CONTROL_TYPES_DEFINED */
+
 Focl_Obj_Int FoclObjectUnboxInt(Focl_Object* obj);
 Focl_Obj_Float FoclObjectUnboxFloat(Focl_Object* obj);
 void FoclObjectBoxInt(Focl_Object* obj, Focl_Obj_Int i_);
@@ -328,7 +388,6 @@ typedef struct Focl_Context
     Focl_ObjTablePool* objTablePool;
     Focl_CommandTablePool* cmdTablePool;
     Focl_DictPool* dictPool;
-    Focl_Object* returnValue;
     Focl_FlatObjPool* flatObjPool;
     Focl_StrObjPool* strObjPool;
     Focl_ListObjPool* listObjPool;
@@ -340,15 +399,6 @@ typedef struct Focl_Context
     Focl_IOBuffer* outBuffer; /* currently only have output buffer */
     Focl_Environment* globalEnv;
     Focl_Environment* curEnv;
-    jmp_buf breakBuf;
-    jmp_buf continueBuf;
-    jmp_buf exitBuf;
-    jmp_buf returnBuf;
-    bool hasBreakBuf;
-    bool hasContinueBuf;
-    bool hasExitBuf;
-    bool hasReturnBuf;
-    int exitCode;
 }Focl_Context;
 
 typedef struct Focl_ExprParser
@@ -356,19 +406,25 @@ typedef struct Focl_ExprParser
     Focl_Context* context;
     const char* pos;
     const char* end;
+    Focl_Flow flow;       /* set when a command substitution produced a control flow */
+    Focl_Object* flowValue; /* owned; payload of flow when it is ERROR or RETURN */
+    int exitCode;
 }Focl_ExprParser;
+
+typedef struct Focl_Chunk Focl_Chunk;
 
 typedef struct Focl_Command
 {
-    Focl_Object* (*func)(Focl_Context* context, Focl_Vector* objVec, struct Focl_Command* cmd);
+    Focl_Result (*func)(Focl_Context* context, Focl_Vector* objVec, struct Focl_Command* cmd);
     Focl_String* name;
     Focl_String* proc; /* NULL if build-in */
     Focl_String* args; /* NULL if build-in */
+    Focl_Chunk* chunk; /* compiled proc body, NULL until first call */
 }Focl_Command;
 
 Focl_Command* createFoclCommand(Focl_StringPool* strPool, Focl_String* cmdName, Focl_StringView* argsView, Focl_StringView* procView);
 
-typedef Focl_Object* (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
+typedef Focl_Result (*Focl_CommandFunc)(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
 
 #define FOCL_OBJECT_ERROR NULL
 #define FOCL_COMMAND_ERROR NULL
@@ -413,11 +469,11 @@ void FoclVectorPoolFree(Focl_Vector* vec, Focl_VectorPool* vecPool);
 
 void LinkObjectWithName(Focl_Context* context, Focl_Object* obj, const Focl_String* str);
 
-Focl_Object* Focl_exprBool(Focl_Context* context, const Focl_StringView* strView);
+Focl_Result Focl_exprBool(Focl_Context* context, const Focl_StringView* strView);
 
-Focl_Object* Focl_parseCommand(Focl_Context* context, const Focl_StringView* strView);
-Focl_Object* Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView);
-Focl_Object* Focl_parseLine(Focl_Context* context, Focl_String* lineStr);
+Focl_Result Focl_parseCommand(Focl_Context* context, const Focl_StringView* strView);
+Focl_Result Focl_parseCommandSequence(Focl_Context* context, Focl_StringView* strView);
+Focl_Result Focl_parseLine(Focl_Context* context, Focl_String* lineStr);
 Focl_Command* Focl_FindCommand(Focl_Context* context, const Focl_String* target);
 
 Focl_Object* exprParseExpression(Focl_ExprParser* p);
@@ -435,6 +491,11 @@ Focl_Object* FoclObjectBool(Focl_FlatObjPool* objPool, Focl_Obj_Bool booleanValu
 void FoclObjectRetain(Focl_Object* obj);
 void FoclObjectRelease(Focl_Object* obj, Focl_Context* context);
 void FoclObjectReleaseOpDtVoid(void* obj, void* ctx);
+
+void FoclResultRelease(Focl_Result* result, Focl_Context* context);
+
+/* Returns a static, null-terminated version string. Do not free it. */
+char* Focl_GetVersionStr(void);
 
 size_t Focl_RegisterCPtr(const char* name, void (*ctfunc)(Focl_CPtr* handle, void* ctx), void (*dtfunc)(void* ptr, void* ctx), Focl_Context* context);
 Focl_CPtr* FoclCPtrHandleAlloc(Focl_Context* context, size_t typeId);
@@ -472,20 +533,31 @@ void Focl_LinkObject(Focl_Object* obj, Focl_Environment* env, Focl_Context* cont
 void FoclObjectPrint(Focl_Object* obj, Focl_IOBuffer* oBuffer, Focl_StringPool* strPool);
 void FoclObjectGets(Focl_StringPool* strPool, Focl_Object* obj);
 Focl_Object* FoclObjectScan(Focl_StrObjPool* strObjPool, Focl_StringPool* strPool, Focl_Object* obj);
-Focl_Object* Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
+Focl_Result Focl_evalProc(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd);
 void FoclRegisterCommand(Focl_Context* context, const char* cmdName, Focl_CommandFunc func);
 
 int focl_countBraceDepth(const char* str);
 
 void Focl_getline(FILE* fp, char** linePtr, size_t* len, size_t* capacity);
 
-Focl_Object* Focl_evalFile(Focl_Context* ctx, const char* filename);
+Focl_Result Focl_evalFile(Focl_Context* ctx, const char* filename);
+
+/* Compile a source view into a reusable chunk and execute it with the VM. */
+Focl_Chunk* Focl_Compile(Focl_Context* context, const Focl_StringView* sourceView);
+Focl_Chunk* Focl_CompileSource(Focl_Context* context, const char* source);
+Focl_Result Focl_VMExecute(Focl_Context* context, Focl_Chunk* chunk);
+void Focl_ChunkFree(Focl_Chunk* chunk);
+Focl_Bytecode Focl_ChunkSerialize(Focl_Chunk* chunk);
+void Focl_BytecodeFree(Focl_Bytecode* bytecode);
+Focl_Chunk* Focl_ChunkDeserialize(Focl_Context* context, const void* data, size_t size);
+Focl_Object* Focl_evalCompiled(Focl_Context* context, const char* source);
+Focl_Object* Focl_evalBytecode(Focl_Context* context, const void* data, size_t size);
 
 #define FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, dsttype, strObjPool, strPool) \
     obj = FoclObjVecAt(objVec, idx); \
     if (obj->type != dsttype) \
     { \
-        return FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG); \
+        return FoclResultError(FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG)); \
     } \
 
 #define FOCL_OBJ_VEC_AT_AS_OBJ_WITH_CLEAR(objVec, idx, obj, dsttype, strObjPool, strPool, CLEAR_PROGN) \
@@ -493,14 +565,14 @@ Focl_Object* Focl_evalFile(Focl_Context* ctx, const char* filename);
     if (obj->type != dsttype) \
     { \
         CLEAR_PROGN; \
-        return FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG); \
+        return FoclResultError(FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG)); \
     } \
 
 #define FOCL_OBJ_VEC_AT_NOT_ERR(objVec, idx, obj, strObjPool, strPool) \
     obj = FoclObjVecAt(objVec, idx); \
     if (obj->type == FOCL_OBJ_TYPE_ERROR) \
     { \
-        return FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG); \
+        return FoclResultError(FoclObjectError(strObjPool, strPool, FOCL_ERR_INVALID_ARG)); \
     } \
 
 #define FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, idx, obj, strObjPool, strPool) FOCL_OBJ_VEC_AT_AS_OBJ(objVec, idx, obj, FOCL_OBJ_TYPE_INT, strObjPool, strPool)

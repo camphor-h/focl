@@ -1,0 +1,10 @@
+proc find {n} {
+    set i 0
+    while {$i < 10} {
+        if {$i == $n} { return $i }
+        incr i
+    }
+    return -1
+}
+puts [find 4]
+puts [find 20]

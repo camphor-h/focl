@@ -101,10 +101,8 @@ int main(int argc, char* argv[])
                 }
                 else if (strcmp(argv[i], "-v") == 0)
                 {
-                    shouldEnterREPL = false;
-                    fileToOpen = NULL;
-                    printf("Fast Optimized Command Language\nBuild time:" __DATE__", "__TIME__ "\n");
-                    exitCode = 0;
+                    printf("Fast Optimized Command Language %s\n", Focl_GetVersionStr());
+                    return 0;
                 }
                 else
                 {

@@ -103,12 +103,12 @@ Focl_Obj_Float Focl_Math_RadiansToDegree(Focl_Obj_Float rad)
     return rad * (180.0 / FOCL_MATH_PI);
 }
 
-Focl_Object* math_sin(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result math_sin(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* objNum = FoclObjVecAt(objVec, 0);
     Focl_Object* retValue;
@@ -126,14 +126,18 @@ Focl_Object* math_sin(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
     {
         retValue = FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_INVALID_ARG);
     }
-    return retValue;
+    if (retValue->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return FoclResultError(retValue);
+    }
+    return FoclResultOk(retValue);
 }
-Focl_Object* math_cos(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result math_cos(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* objNum = FoclObjVecAt(objVec, 0);
     Focl_Object* retValue;
@@ -151,14 +155,18 @@ Focl_Object* math_cos(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
     {
         retValue = FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_INVALID_ARG);
     }
-    return retValue;
+    if (retValue->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return FoclResultError(retValue);
+    }
+    return FoclResultOk(retValue);
 }
-Focl_Object* math_tan(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result math_tan(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* objNum = FoclObjVecAt(objVec, 0);
     Focl_Object* retValue;
@@ -176,14 +184,18 @@ Focl_Object* math_tan(Focl_Context* context, Focl_Vector* objVec, Focl_Command* 
     {
         retValue = FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_INVALID_ARG);
     }
-    return retValue;
+    if (retValue->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return FoclResultError(retValue);
+    }
+    return FoclResultOk(retValue);
 }
-Focl_Object* math_degtorad(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result math_degtorad(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* objNum = FoclObjVecAt(objVec, 0);
     Focl_Object* retValue;
@@ -201,14 +213,18 @@ Focl_Object* math_degtorad(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     {
         retValue = FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_INVALID_ARG);
     }
-    return retValue;
+    if (retValue->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return FoclResultError(retValue);
+    }
+    return FoclResultOk(retValue);
 }
-Focl_Object* math_radtodeg(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result math_radtodeg(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* objNum = FoclObjVecAt(objVec, 0);
     Focl_Object* retValue;
@@ -226,93 +242,117 @@ Focl_Object* math_radtodeg(Focl_Context* context, Focl_Vector* objVec, Focl_Comm
     {
         retValue = FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_INVALID_ARG);
     }
-    return retValue;
+    if (retValue->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return FoclResultError(retValue);
+    }
+    return FoclResultOk(retValue);
 }
-Focl_Object* math_inttofloat(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result math_inttofloat(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* objNum;
     FOCL_OBJ_VEC_AT_AS_INT_OBJ(objVec, 0, objNum, context->strObjPool, context->strPool);
     Focl_Object* fNum = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_FLOAT);
     FoclObjectBoxFloat(fNum, (Focl_Obj_Float)FoclObjectUnboxInt(objNum));
-    return fNum;
+    return FoclResultOk(fNum);
 }
-Focl_Object* math_floattoint(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result math_floattoint(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* objNum;
     FOCL_OBJ_VEC_AT_AS_FLOAT_OBJ(objVec, 0, objNum, context->strObjPool, context->strPool);
     Focl_Object* iNum = FoclFlatObjPoolAlloc(context->flatObjPool, FOCL_OBJ_TYPE_INT);
     FoclObjectBoxInt(iNum, (Focl_Obj_Int)FoclObjectUnboxFloat(objNum));
-    return iNum;
+    return FoclResultOk(iNum);
 }
-Focl_Object* math_log(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result math_log(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* objNum;
     Focl_Object* retValue;
     FOCL_OBJ_VEC_AT_AS_INT_OR_FLOAT(objVec, 0, objNum, context, retValue, Focl_Math_Log);
-    return retValue;
+    if (retValue->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return FoclResultError(retValue);
+    }
+    return FoclResultOk(retValue);
 }
-Focl_Object* math_log10(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result math_log10(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* objNum;
     Focl_Object* retValue;
     FOCL_OBJ_VEC_AT_AS_INT_OR_FLOAT(objVec, 0, objNum, context, retValue, Focl_Math_Log10);
-    return retValue;
+    if (retValue->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return FoclResultError(retValue);
+    }
+    return FoclResultOk(retValue);
 }
-Focl_Object* math_sqrt(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result math_sqrt(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* objNum;
     Focl_Object* retValue;
     FOCL_OBJ_VEC_AT_AS_INT_OR_FLOAT(objVec, 0, objNum, context, retValue, Focl_Math_Sqrt);
-    return retValue;
+    if (retValue->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return FoclResultError(retValue);
+    }
+    return FoclResultOk(retValue);
 }
-Focl_Object* math_abs(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result math_abs(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* objNum;
     Focl_Object* retValue;
     FOCL_OBJ_VEC_AT_AS_INT_OR_FLOAT(objVec, 0, objNum, context, retValue, Focl_Math_Abs);
-    return retValue;
+    if (retValue->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return FoclResultError(retValue);
+    }
+    return FoclResultOk(retValue);
 }
-Focl_Object* math_exp(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
+Focl_Result math_exp(Focl_Context* context, Focl_Vector* objVec, Focl_Command* cmd)
 {
     (void)cmd;
     if (FoclVectorGetSize(objVec) != 1)
     {
-        return FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT);
+        return FoclResultError(FoclObjectError(context->strObjPool, context->strPool, FOCL_ERR_UNSUPPORTED_ARG_COUNT));
     }
     Focl_Object* objNum;
     Focl_Object* retValue;
     FOCL_OBJ_VEC_AT_AS_INT_OR_FLOAT(objVec, 0, objNum, context, retValue, Focl_Math_Exp);
-    return retValue;
+    if (retValue->type == FOCL_OBJ_TYPE_ERROR)
+    {
+        return FoclResultError(retValue);
+    }
+    return FoclResultOk(retValue);
 }
 void Focl_RegisterMathCommand(Focl_Context* context)
 {

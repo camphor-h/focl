@@ -1,0 +1,6 @@
+proc f {} {
+    source "test/control/source_target.inc"
+    puts "not reached in proc"
+    return 1
+}
+puts [f]
